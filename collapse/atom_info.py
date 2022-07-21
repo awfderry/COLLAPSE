@@ -46,29 +46,8 @@ aa_abbr = [
     "V",
     "X",
 ]
-letter_to_aa = dict(zip(aa_abbr, aa))
-aa_to_letter = lambda x: {
-    'ALA': 'A',
-    'ARG': 'R',
-    'ASN': 'N',
-    'ASP': 'D',
-    'CYS': 'C',
-    'GLU': 'E',
-    'GLN': 'Q',
-    'GLY': 'G',
-    'HIS': 'H',
-    'ILE': 'I',
-    'LEU': 'L',
-    'LYS': 'K',
-    'MET': 'M',
-    'PHE': 'F',
-    'PRO': 'P',
-    'SER': 'S',
-    'THR': 'T',
-    'TRP': 'W',
-    'TYR': 'Y',
-    'VAL': 'V'
-}.get(x, 'X')
+letter_to_aa = lambda x: dict(zip(aa_abbr, aa)).get(x, 'X')
+aa_to_letter = lambda x: dict(zip(aa, aa_abbr)).get(x, 'X')
 
 aa_to_label = lambda x: {
     'A': 0,
