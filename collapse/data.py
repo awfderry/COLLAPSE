@@ -5,6 +5,7 @@ import os
 import torch
 import math
 import random
+import pickle
 from torch.utils.data import IterableDataset
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
@@ -354,6 +355,8 @@ class EmbedTransform(object):
             if not self.include_hets:
                 atom_df = atom_df[atom_df.resname.isin(atom_info.aa)].reset_index(drop=True)
         except:
+            return None
+        if len(atom_df['residue'].unique()) > 1200:
             return None
         outdata = embed_protein(atom_df, self.model, device=self.device, include_hets=self.include_hets, env_radius=self.env_radius)
         elem['resids'] = outdata['resids']

@@ -35,6 +35,22 @@ Install the package using pip:
 pip install .
 ```
 
+## Downloading datasets
+
+Datasets are hosted on Zenodo. The following datasets are available for download depending on your use case.
+
+- `background_stats.tar.gz`: folder containing background distributions and statistics (needed for annotation and search applications)
+- `checkpoints.tar.gz`: folder containing Pytorch checkpoints for model parameters (needed for all applications)
+- `full_site_db_stats.pkl`: pickle file containing functional site embedding database with data from Prosite + CSA (needed for annotation application)
+- `pdb_embeddings.pkl`: pickle file containing embeddings of all residues in 100% redundant subset of PDB chains (needed for search application)
+- `pdb100_embeddings.tar.gz`: folder containing PDB100 embeddings, both pickle file above and LMDB format containing all embeddings, atom information, and metadata (very file, mostly useful for deriving new data subsets)
+
+To download the dataset, download directly from Zenodo or use the following script, where FILENAME is the name of the file in Zenodo (e.g. `checkpoints.tar.gz`):
+
+```
+cd data
+bash download_data.sh FILENAME
+```
 
 ## Usage
 
@@ -97,9 +113,27 @@ python -m atom3d.datasets.scripts.combine_lmdb OUT_DIR/tmp_* OUT_DIR/full
 
 ### Iterative search of functional site against PDB database
 
+Given the structural site defined by a specific residue in a PDB file, you can search against a structure database using the following command.
+
 ```
-python search_site.py [params]
+python search_site.py PDB_FILE CHAIN RESID DATABASE
 ```
+
+Additional arguments are:
+- `--checkpoint` (default `./data/checkpoints/collapse_base.pt`): To specify a different checkpoint with pre-trained model parameters.
+- `--outfile` (default `PDBID_CHAIN_RESID_search.csv`): CSV file to save output.
+- `--cutoff` (default `1e-4`): Significance cutoff for keeping hits at each search iteration.
+- `--num_iter` (default `3`): Number of search iterations.
+- `--include_hets`: Flag indicating whether to include heteroatoms, such as ligands, ions, and cofactors, in the input PDB. Hydrogens and waters are always removed.
+- `--verbose`: flag for whether or not to print progress during search.
+
+Output file is a CSV with resulting PDBs, residue IDs, protein metadata, quantile-transformed cosine similarity, and the iteration and query where the result first appeared. The first row contains the query structure and residue ID.
+
+Example:
+```
+python search_site.py data/examples/1a0h.pdb B H363 data/datasets/pdb100_embeddings/pdb_embeddings.pkl --cutoff 1e-3 --verbose --num_iter 3
+```
+
 
 ### Annotate structure using functional site database
 
@@ -119,9 +153,6 @@ Additional arguments are:
 - `--include_hets`: Flag indicating whether to include heteroatoms, such as ligands, ions, and cofactors, in the input PDB. Hydrogens and waters are always removed.
 - `--verbose`: Flag indicating whether to print all PDB and residue hits in results. By default, only the total number of PDBs is shown.
 
-## Downloading datasets
-
-Datasets are hosted on Zenodo. 
 
 ## License
 
@@ -131,4 +162,4 @@ This project is licensed under the [MIT license](LICENSE)
 
 If you use COLLAPSE, please cite our preprint:
 
-> 
+> Derry, A., & Altman, R. B. (2022). COLLAPSE: A representation learning framework for identification and characterization of protein structural sites. bioRxiv.

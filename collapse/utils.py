@@ -1,17 +1,32 @@
+import os
+import pathlib
 import numpy as np
 import pandas as pd
 import scipy.spatial as spa
+import pickle
+
+DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
 
 def pdb_from_fname(fname):
     af_flag = False
     if fname.endswith('.ent.gz'):
-        pdb = fname[3:7]
+        pdb = fname.split('/')[-1][3:7]
     elif fname.endswith('.pdb'):
-        pdb = fname[:-4]
+        pdb = fname.split('/')[-1][:-4]
     elif 'AF' in fname:
         af_flag = True
         pdb = fname.split('-')[1]
     return pdb, af_flag
+
+
+def quantile_from_score(score_array, background_dist=os.path.join(DATA_DIR, 'background_stats/combined_background_dist.pkl'), sample_size=100000):
+    with open(background_dist, 'rb') as f:
+        full_dist = pickle.load(f)
+    samp_dist = np.random.choice(full_dist, sample_size)
+    
+    if isinstance(score_array, list):
+        score_array = np.array(score_array)
+    return np.mean(samp_dist < score_array[:, np.newaxis], 1)
 
 """Methods to extract protein interface labels pair. -- from ATOM3D"""
 
