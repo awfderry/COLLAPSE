@@ -205,7 +205,13 @@ def embed_protein(atom_df, model, device='cpu', include_hets=True, env_radius=10
         emb_data['confidence'].append(confidence)
     graphs = Batch.from_data_list(graphs).to(device)
     with torch.no_grad():
-        embs, _ = model.online_encoder(graphs, return_projection=False)
+        try:
+            embs, _ = model.online_encoder(graphs, return_projection=False)
+        except RuntimeError as e:
+            if "CUDA out of memory" not in str(e): raise(e)
+            torch.cuda.empty_cache()
+            print('Out of Memory error!', flush=True)
+            return None
     emb_data['embeddings'] = np.stack(embs.cpu().numpy(), 0)
     return emb_data
 
@@ -356,9 +362,10 @@ class EmbedTransform(object):
                 atom_df = atom_df[atom_df.resname.isin(atom_info.aa)].reset_index(drop=True)
         except:
             return None
-        if len(atom_df['residue'].unique()) > 1200:
-            return None
+
         outdata = embed_protein(atom_df, self.model, device=self.device, include_hets=self.include_hets, env_radius=self.env_radius)
+        if outdata is None:
+            return
         elem['resids'] = outdata['resids']
         elem['confidence'] = outdata['confidence']
         elem['chains'] = outdata['chains']

@@ -32,4 +32,4 @@ print(e_db.shape)
 outdata = {'embeddings': e_db, 'pdbs': pdb_ids, 'chains': chains, 'resids': resids}
 
 with open(args.outfile, 'wb') as f:
-    pickle.dump(outdata, f)
+    pickle.dump(outdata, f, protocol=4)
