@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import scipy.spatial as spa
 import pickle
+from scipy import ndimage
 
 DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
 
@@ -27,6 +28,19 @@ def quantile_from_score(score_array, background_dist=os.path.join(DATA_DIR, 'bac
     if isinstance(score_array, list):
         score_array = np.array(score_array)
     return np.mean(samp_dist < score_array[:, np.newaxis], 1)
+
+def contiguous_high_confidence_regions(plddt, threshold=50):
+    betas = ndimage.gaussian_filter1d(plddt, sigma=5)
+    indices = np.ones(betas.shape[0], dtype=int)
+    indices[np.where(betas < 70)] = 0
+    slices = ndimage.find_objects(ndimage.label(indices)[0])
+    to_keep = []
+    for s in slices:
+        s = s[0]
+        if s.stop - s.start > threshold:
+            to_keep.extend(list(range(s.start, s.stop)))
+    to_keep = np.array(to_keep)
+    return to_keep
 
 """Methods to extract protein interface labels pair. -- from ATOM3D"""
 

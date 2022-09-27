@@ -5,7 +5,7 @@ import sys
 checkpoint = sys.argv[1]
 
 # Define the training run 
-name = f'logs/msp_{checkpoint}/msp'
+name = f'logs/msp_fixed_{checkpoint}/msp'
 print(name)
 
 # Load training results

@@ -13,7 +13,7 @@ import collections as col
 parser = argparse.ArgumentParser()
 parser.add_argument('pdb', type=str, nargs='+')
 parser.add_argument('--chains', type=str, default=None)
-parser.add_argument('--db', type=str, default='data/full_site_db_stats.pkl')
+parser.add_argument('--db', type=str, default='data/datasets/full_site_db_stats.pkl')
 parser.add_argument('--cutoff', type=float, default=1e-4)
 parser.add_argument('--site_cutoff', type=float, default=1e-4)
 parser.add_argument('--checkpoint', type=str, default='data/checkpoints/collapse_base.pt')

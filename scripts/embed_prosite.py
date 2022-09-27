@@ -12,18 +12,18 @@ from collapse import initialize_model
 parser = argparse.ArgumentParser()
 parser.add_argument('site_name', type=str)
 parser.add_argument('out_dir', type=str)
-parser.add_argument('--checkpoint', type=str, default='data/checkpoints/collapse_base.pt')
+parser.add_argument('--checkpoint', type=str, default='../data/checkpoints/af2_nocons_epoch1212.pt')
 args = parser.parse_args()
 
 os.makedirs(args.out_dir, exist_ok=True)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-pdb_dir = '/oak/stanford/groups/rbaltman/aderry/COLLAPSE/prosite_pdb'
+pdb_dir = '/oak/stanford/groups/rbaltman/aderry/COLLAPSE/data/prosite_pdb'
 
 print(args.site_name)
 
-with open(f'prosite_data_{args.site_name}.json') as f:
+with open(f'../data/prosite_data_{args.site_name}.json') as f:
     dataset = json.load(f)
 
 dataset = SiteCoordDataset(dataset, pdb_dir, env_radius=10.0)
@@ -49,11 +49,11 @@ with torch.no_grad():
         elif label[0] == 1:
             prosite_labels.append('TP')
 
-test_file = f'prosite_test_{args.site_name}.json'
+test_file = f'../data/prosite_test_{args.site_name}.json'
 if os.path.exists(test_file):
     with open(test_file) as f:
         dataset = json.load(f)
-    dataset = SiteCoordDataset(dataset, pdb_dir, env_radius=10.0, lamb=args.lamb)
+    dataset = SiteCoordDataset(dataset, pdb_dir, env_radius=10.0)
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
     print('Computing FP/FN embeddings...')

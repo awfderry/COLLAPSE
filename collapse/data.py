@@ -243,6 +243,7 @@ def sample_functional_center(df, resid, train_mode=True):
 def extract_env_from_resid(df, ch_resid, env_radius, res_df=None, train_mode=False):
     chain, resid = ch_resid
     if resid[0] == 'X':
+        print('Nonstandard residue')
         return None
     if res_df is None:
         df['resname'] = df['resname'].apply(atom_info.aa_to_letter)
@@ -257,16 +258,17 @@ def extract_env_from_resid(df, ch_resid, env_radius, res_df=None, train_mode=Fal
     df_env = df.iloc[pt_idx, :]
     
     if len(df_env) == 0:
+        print('No environment found')
         return None
     
     graph = transform(df_env)
     
     return graph
 
-def extract_env_from_coords(self, df, center):
+def extract_env_from_coords(df, center, env_radius=10.0):
     df = df.reset_index()
     kd_tree = scipy.spatial.cKDTree(df[['x', 'y', 'z']].to_numpy())
-    pt_idx = kd_tree.query_ball_point(center, r=self.env_radius, p=2.0)
+    pt_idx = kd_tree.query_ball_point(center, r=env_radius, p=2.0)
     df_env = df.iloc[pt_idx, :]
     
     if len(df_env) == 0:
@@ -292,15 +294,17 @@ class CDDTransform(object):
         self.device = device
     
     def __call__(self, elem, num_pairs_sampled=1):
-        pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
-        pdb_idx = dict(zip(pdbids, range(len(pdbids))))
+        # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
+        pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
         with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
             msa = MSA(AlignIO.read(f, 'fasta'))
+        # msa = elem['msa']
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
-        except ValueError:
+        except:
+            print('failed for MSA', cdd_id)
             return (None, None), None
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
 
@@ -327,14 +331,17 @@ class CDDTransform(object):
     
     def _process_dataframes(self, atoms, pair):
         id1, id2 = pair
+        id1_id, id1_chain = id1.split('_')
+        id2_id, id2_chain = id2.split('_')
+
         if self.single_chain:
-            df1 = atoms[(atoms['ensemble'].str[:4] == id1[:4]) & (atoms['chain'] == id1[4])]
-            df2 = atoms[(atoms['ensemble'].str[:4] == id2[:4]) & (atoms['chain'] == id2[4])]
+            df1 = atoms[(atoms['ensemble'].str.split('.').str[0] == id1_id) & (atoms['chain'] == id1_chain)]
+            df2 = atoms[(atoms['ensemble'].str.split('.').str[0] == id2_id) & (atoms['chain'] == id2_chain)]
         else:
-            df1 = atoms[(atoms['ensemble'].str[:4] == id1[:4])]  # & (atoms['chain'] == id1[4])]
-            df1['same_chain'] = (df1['chain'] == id1[4]).astype(int)
-            df2 = atoms[(atoms['ensemble'].str[:4] == id2[:4])]  # & (atoms['chain'] == id2[4])]
-            df2['same_chain'] = (df2['chain'] == id2[4]).astype(int)
+            df1 = atoms[(atoms['ensemble'].str.split('.').str[0] == id1_id)]
+            df1['same_chain'] = (df1['chain'] == id1_chain).astype(int)
+            df2 = atoms[(atoms['ensemble'].str.split('.').str[0] == id2_id)]
+            df2['same_chain'] = (df2['chain'] == id2_chain).astype(int)
 
         return df1, df2
 
@@ -796,10 +803,18 @@ class MSA(MultipleSeqAlignment):
     def get_pdb_chains(self):
         labels = []
         for r in self._records:
-            if 'pdb' in r.id:
-                labels.append(r.id.split('|')[-2].lower() + r.id.split('|')[-1])
-            elif 'sp' in r.id:
-                labels.append(r.id.split('|')[-2])
+            split = r.id.split('|')
+            if '|pdb|' in r.id:
+                if split[3].strip() == '':
+                    continue
+                elif (len(split) < 5) or (split[4].strip() == ''):
+                    labels.append(split[3].lower() + '_A')
+                else:
+                    labels.append(split[3].lower() + '_' + split[4])
+            elif '|sp|' in r.id:
+                if split[3].strip() == '':
+                    continue
+                labels.append(r.id.split('|')[3] + '_A')
         return labels
     
     def get_aligned_positions(self):
@@ -818,8 +833,14 @@ class MSA(MultipleSeqAlignment):
     def sample_record_pair(self):
         seq_i1, seq_i2 = np.random.choice(range(len(self.pdb_seq_records)), size=2, replace=False)
         seq_r1, seq_r2 = self.pdb_seq_records[seq_i1], self.pdb_seq_records[seq_i2]
-        r1 = [r for r in self._records if seq_r1.id[:4].upper() + '|' + seq_r1.id[4:] in r.id][0]
-        r2 = [r for r in self._records if seq_r2.id[:4].upper() + '|' + seq_r2.id[4:] in r.id][0]
+        if len(seq_r1.id.split('_')[0]) == 4:
+            r1 = [r for r in self._records if seq_r1.id.split('_')[0].upper() + '|' + seq_r1.id.split('_')[1] in r.id][0]
+        else:
+            r1 = [r for r in self._records if seq_r1.id.split('_')[0].upper() in r.id][0]
+        if len(seq_r2.id.split('_')[0]) == 4:
+            r2 = [r for r in self._records if seq_r2.id.split('_')[0].upper() + '|' + seq_r2.id.split('_')[1] in r.id][0]
+        else:
+            r2 = [r for r in self._records if seq_r2.id.split('_')[0].upper() in r.id][0]
         return r1, r2, seq_r1, seq_r2
 
     def sample_position_pairs(self, r1, r2, seq_r1, seq_r2, num_pairs=1):

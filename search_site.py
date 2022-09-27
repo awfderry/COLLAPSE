@@ -31,13 +31,13 @@ def main(args):
     e_db = db_data['embeddings'] # (M, 512)
     pdb_ids = np.array(db_data['pdbs'])
     resids = np.array(db_data['resids'])
+    if len(pdb_ids[0].split('_')[0]) > 4:
+        af_flag = True
     
-    print('1due' in [x[:4] for x in pdb_ids])
-    
-    pdb_meta = pd.read_csv('data/mappings/pdb_metadata.csv', index_col=0)
+    pdb_meta = pd.read_csv(args.metadata, index_col=0, sep=None)
     
     if query_pdb not in pdb_meta.index:
-        pdb_meta.loc[query_pdb, :] = ['N/A'] * pdb_meta.shape[1]
+        pdb_meta.loc[query_pdb + '_' + args.chain, :] = ['N/A'] * pdb_meta.shape[1]
     
     # filter DB to same residue, for efficiency
     residues = np.array([r[0] for r in db_data['resids']])
@@ -60,34 +60,41 @@ def main(args):
     
     results = {'PDB': query_pdb, 'RESID': [args.resid], 'COSINE': [1.0], 'ITER': [0], 'QUERY': ['N/A']}
     
+    used = set()
     for it in range(args.num_iter):
         lims, dists, idx = index.range_search(query_set, eff_cutoff)
         all_idx = np.unique(idx)
+        new = np.array([x for x in all_idx if x not in used])
+        used.update(set(all_idx))
         if len(idx) == 0:
             print('No results found!')
             continue
-        query_set = e_db[all_idx]
+        query_set = e_db[new]
         
         if args.verbose:
-            print(f'Iteration {it + 1}: {len(all_idx)} total results')
+            print(f'Iteration {it + 1}: {len(new)} new results')
         
         for q_i in range(len(lims) - 1):
             dists_i = dists[lims[q_i]:lims[q_i + 1]]
             idx_i = idx[lims[q_i]:lims[q_i + 1]]
             pdbs_i = pdb_ids[idx_i]
             resids_i = resids[idx_i]
-            print(f'query {q_i}: {len(dists_i)} neighbors -- {pdbs_i}')
+            # print(f'query {q_i}: {len(dists_i)} neighbors -- {pdbs_i}')
             results['PDB'].extend(pdbs_i.tolist())
             results['RESID'].extend(resids_i.tolist())
             results['COSINE'].extend(quantile_from_score(dists_i))
             results['ITER'].extend([it + 1] * len(idx_i))
             results['QUERY'].extend([query_pdb[q_i]] * len(idx_i))
-        query_pdb = pdb_ids[all_idx].tolist()
+        query_pdb = pdb_ids[new].tolist()
+    
 
     results = pd.DataFrame(results)
     results = results.drop_duplicates(subset=['PDB'])
-    cols = ['Description', 'Classification', 'Keywords', 'Method', 'Uniprot', 'Citation']
-    results[cols] = results['PDB'].apply(lambda x: pdb_meta.loc[x[:4], cols])
+    if not af_flag:
+        cols = ['Description', 'Classification', 'Keywords', 'Method', 'Uniprot', 'Citation']
+    else:
+        cols = ['Entry Name', 'Protein names', 'Gene Names', 'Organism']
+    results[cols] = results['PDB'].apply(lambda x: pdb_meta.loc[x, cols])
     
     if args.verbose:
         print(results)
@@ -103,6 +110,7 @@ if __name__ == '__main__':
     parser.add_argument('db', type=str, help='pre-computed embedding database in LMDB format')
     parser.add_argument('--outfile', type=str, default=None)
     parser.add_argument('--checkpoint', type=str, default='data/checkpoints/collapse_base.pt')
+    parser.add_argument('--metadata', type=str, default='data/mappings/pdb_metadata.csv')
     parser.add_argument('--num_iter', type=int, default=3, help='number of search iterations')
     parser.add_argument('--cutoff', type=float, default=1e-4, help='similarity cutoff for inclusion at each iteration')
     parser.add_argument('--verbose', action='store_true', help='whether to print output')

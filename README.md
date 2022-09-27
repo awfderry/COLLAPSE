@@ -26,6 +26,12 @@ COLLAPSE also requires the Geometric Vector Perceptron (GVP), which can be insta
 
 Scripts may require additional dependencies, which may be installed using conda or pip as needed.
 
+To create a Conda environment and download required packages, run the following script:
+
+```
+./install_dependencies.sh
+```
+
 
 ## Installation
 

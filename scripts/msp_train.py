@@ -148,7 +148,7 @@ def train(args, device, log_dir, rep=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str)
-    parser.add_argument('--checkpoint', type=str, default='data/checkpoints/collapse_base.pt')
+    parser.add_argument('--checkpoint', type=str, default='../data/checkpoints/collapse_base.pt')
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--hidden_dim', type=int, default=512)
     parser.add_argument('--num_epochs', type=int, default=20)
@@ -157,13 +157,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    cpt = args.checkpoint.split('/')[-1].strip('.pt')
         
     for rep, seed in enumerate(np.random.randint(0, 1000, size=3)):
         print('seed:', seed)
         if args.finetune:
-            log_dir = os.path.join('logs', f'msp_{args.checkpoint}')
+            log_dir = os.path.join('logs', f'msp_{cpt}')
         else:
-            log_dir = os.path.join('logs', f'msp_fixed_{args.checkpoint}')
+            log_dir = os.path.join('logs', f'msp_fixed_{cpt}')
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         np.random.seed(seed)

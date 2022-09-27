@@ -17,9 +17,9 @@ from tqdm import tqdm
 import wandb
 
 parser = argparse.ArgumentParser(description='BYOL implementation for aligned protein environments')
-parser.add_argument('--val_dir', type=str, default='../data/lmdb/pfam_pdb_balanced',
+parser.add_argument('--val_dir', type=str, default='../data/datasets/pfam_pdb_balanced',
                     help='location of dataset')
-parser.add_argument('--data_dir', type=str, default='../data/lmdb/cdd_pdb_dataset_new',
+parser.add_argument('--data_dir', type=str, default='../data/datasets/cdd_af2_dataset',
                     help='location of dataset')
 parser.add_argument('--run_name', type=str, default=datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"), 
                     help='run name for logging')
@@ -39,8 +39,6 @@ parser.add_argument('--edge_cutoff', default=4.5, type=float,
                     help='cutoff for defining spatial graph')
 parser.add_argument('--env_radius', default=10.0, type=float, 
                     help='radius of atomic environment')
-parser.add_argument('--lamb', default=0.0, type=float, 
-                    help='lambda for weigting node pooling')
 parser.add_argument('--tied_weights', action='store_true',
                     help='Use tied weights for target and online encoder (as in SimSiam)')
 
@@ -49,12 +47,6 @@ args = parser.parse_args()
 NUM_GPUS = torch.cuda.device_count()
 print(f'using {NUM_GPUS} GPUs')
 
-    
-def collate(batch):
-    "Puts each data field into a tensor with outer dimension batch size"
-    batch = list(filter(lambda x: x is not None, batch))
-    batch = Batch.from_data_list(batch)
-    return batch
 
 @torch.no_grad()
 def evaluate(loader, learner, device):
@@ -97,12 +89,12 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # wandb_logger = WandbLogger(project="protein-ssl", log_model=True, name=args.run_name, config=vars(args))
-    wandb.init(project="protein-ssl", name=args.run_name, config=vars(args))
+    wandb.init(project="collapse", name=args.run_name, config=vars(args))
     
-    train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(lamb=args.lamb, single_chain=True, env_radius=args.env_radius))
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=NoneCollater())
-    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(lamb=args.lamb, single_chain=True, env_radius=args.env_radius))
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=NoneCollater())
+    train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, env_radius=args.env_radius))
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, env_radius=args.env_radius))
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
     
     for (graph1, graph2), _ in train_loader:
         dummy_graph = graph1.clone()
@@ -137,10 +129,12 @@ def main():
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
+            # if i == 5:
+            #     quit()
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
-            cons = meta['conservation'].to(device)
-            loss = learner(graph1, graph2, loss_weight=cons, return_projection=True)
+            # cons = meta['conservation'].to(device)
+            loss = learner(graph1, graph2, loss_weight=1.0, return_projection=True)
             opt.zero_grad()
             loss.backward()
             opt.step()
