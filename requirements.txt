@@ -1,0 +1,10 @@
+argparse
+pandas
+biopython
+atom3d
+matplotlib
+seaborn
+jupyterlab
+scipy
+sklearn
+wandb
