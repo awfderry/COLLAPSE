@@ -2,8 +2,7 @@ dataset=$1
 
 LINK="https://zenodo.org/record/6903423/files/${dataset}"
 
-echo $LINK
-if [[ $LINK == *.pkl ]]; then
+if [[ $dataset == *.pkl ]]; then
     mkdir datasets
     wget $LINK -O datasets/${dataset}
 else
