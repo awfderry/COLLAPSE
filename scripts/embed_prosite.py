@@ -12,7 +12,7 @@ from collapse import initialize_model
 parser = argparse.ArgumentParser()
 parser.add_argument('site_name', type=str)
 parser.add_argument('out_dir', type=str)
-parser.add_argument('--checkpoint', type=str, default='../data/checkpoints/af2_nocons_epoch1212.pt')
+parser.add_argument('--checkpoint', type=str, default='../data/checkpoints/collapse_base.pt')
 args = parser.parse_args()
 
 os.makedirs(args.out_dir, exist_ok=True)

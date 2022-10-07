@@ -1,3 +1,5 @@
+#!/bin/bash
+
 dataset=$1
 
 LINK="https://zenodo.org/record/6903423/files/${dataset}"

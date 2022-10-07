@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_scatter
 from torch_geometric.utils import softmax
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
 from gvp import GVP, GVPConvLayer, LayerNorm
 
@@ -168,7 +169,30 @@ class MLP(torch.nn.Module):
         x = F.dropout(x, p=0.50, training=self.training)
         x = self.fc2(x)
         return x
-    
+
+class LSTM(torch.nn.Module):
+    def __init__(self, embedding_dim, hidden_dim, output_dim, n_layers, bidirectional=True, dropout=0.5):
+        super().__init__()
+        self.lstm = nn.LSTM(embedding_dim,
+                            hidden_dim,
+                            num_layers=n_layers,
+                            bidirectional=bidirectional,
+                            batch_first=True)
+        self.fc1 = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, embeddings, lengths):
+        packed_embedded = pack_padded_sequence(embeddings, lengths, batch_first=True, enforce_sorted=False) 
+        
+        packed_output, (hidden, cell) = self.lstm(packed_embedded)
+        cat = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
+        rel = self.relu(cat)
+        dense1 = self.fc1(rel)
+        drop = self.dropout(dense1)
+        preds = self.fc2(drop)
+        return preds
 
 if __name__ == "__main__":
     from data import CDDTransform

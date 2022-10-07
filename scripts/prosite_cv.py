@@ -19,6 +19,7 @@ pdb_dir = '/oak/stanford/groups/rbaltman/aderry/pdb/localpdb/mirror/pdb'
 print(site_name)
 
 emb_dir = '/scratch/users/aderry/prosite_embeddings_nocons'
+# emb_dir = '/scratch/users/aderry/prosite_esm'
 
 with open(os.path.join(emb_dir, f'{site_name}.pkl'), 'rb') as f:
     data = pickle.load(f)
@@ -81,23 +82,15 @@ for i, (train_idx, test_idx) in enumerate(outer_cv.split(emb_all, labels_all)):
     print('\nBest Params:\n', clf.best_params_)
     print('\nBest Score:\n', clf.best_score_)
     
-if args.subsample > 0:
-    np.save(f'results/{site_name}_svm_{args.subsample}_y_prob', tptn_scores)
-    np.save(f'results/{site_name}_svm_{args.subsample}_y_true', tptn_labels)
-else:
-    np.save(f'../data/results/{site_name}_svm_y_prob', tptn_scores)
-    np.save(f'../data/results/{site_name}_svm_y_true', tptn_labels)
+
+np.save(f'../data/results/{site_name}_svm_y_prob', tptn_scores)
+np.save(f'../data/results/{site_name}_svm_y_true', tptn_labels)
 
 
 fold_scores = []
 for model in models:
     fold_scores.append(model.predict_proba(emb_test))
 
-if args.subsample > 0:
-    np.save(f'../data/results/{site_name}_svm_{args.subsample}_test_y_prob', fold_scores)
-    np.save(f'../data/results/{site_name}_svm_{args.subsample}_test_y_true', labels_test)
-    np.save(f'../data/results/{site_name}_svm_{args.subsample}_test_pdbs', pdbs_test)
-else:
-    np.save(f'../data/results/{site_name}_svm_test_y_prob', fold_scores)
-    np.save(f'../data/results/{site_name}_svm_test_y_true', labels_test)
-    np.save(f'../data/results/{site_name}_svm_test_pdbs', pdbs_test)
+np.save(f'../data/results/{site_name}_svm_test_y_prob', fold_scores)
+np.save(f'../data/results/{site_name}_svm_test_y_true', labels_test)
+np.save(f'../data/results/{site_name}_svm_test_pdbs', pdbs_test)

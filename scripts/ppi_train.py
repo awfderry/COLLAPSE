@@ -6,9 +6,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.loader import DataLoader
-from byol_pytorch import BYOL
-from models import CDDModel, MLPPaired
+from models import MLPPaired
 from data import PPIDataset
+from collapse import initialize_model
 
 from sklearn.metrics import roc_auc_score, average_precision_score
 
