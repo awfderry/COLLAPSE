@@ -190,7 +190,7 @@ def embed_protein(atom_df, model, device='cpu', include_hets=True, env_radius=10
     graphs = []
     if not include_hets:
         atom_df = atom_df[atom_df.resname.isin(atom_info.aa)].reset_index(drop=True)
-    for (c, r, i), res_df in atom_df.groupby(['chain', 'resname', 'residue']):
+    for (c, i, r), res_df in atom_df.groupby(['chain', 'residue', 'resname']):
         if r not in atom_info.aa[:20]:
             continue
         emb_data['chains'].append(c)
@@ -276,6 +276,14 @@ def extract_env_from_coords(df, center, env_radius=10.0):
     
     graph = transform(df_env)
     return graph
+
+def nearest_residue(df, center):
+    df = df.reset_index()
+    kd_tree = scipy.spatial.cKDTree(df[['x', 'y', 'z']].to_numpy())
+    pt_idx = kd_tree.query(center, 1)[1]
+    nearest = df.iloc[pt_idx, :]
+    chain, resid = nearest['chain'], atom_info.aa_to_letter(nearest['resname']) + str(nearest['residue'])
+    return chain, resid
 
 # =========================
 
@@ -429,7 +437,16 @@ class CDDGraphDataset(IterableDataset):
                     all_resids.append(resid)
                     rows.append(r)
                 yield graphs, pdb_ids, all_resids, cdd_id, c, conservation[c], dist_to_consensus[rows, :][:, rows]
+
+class ProteinMeanTransform(object):
+    def __init__(self):
+        pass
     
+    def __call__(self, item):
+        # pdb_id = item['id']
+        emb = item['embeddings']
+        emb = torch.mean(torch.tensor(emb), 0)
+        return emb, item['label']
         
 class MSPTransform(object):
     def __init__(self, env_radius=10.0, device=None):
@@ -668,6 +685,41 @@ class SiteCoordDataset(IterableDataset):
         for pdb, samples in self.dataset.items():
             total += len(samples['labels'])
         return total
+
+class ESMDataset(IterableDataset):
+    '''
+    Yields graphs from a dictionary of xyz coordinates defining PDB sites.
+    '''
+    
+    def __init__(self, dataset, pdb_dir, esm_dir, env_radius=10.0, device='cpu'):
+        self.dataset = dataset
+        self.pdb_dir = pdb_dir
+        self.esm_dir = esm_dir
+        self.device = device
+    
+    def __iter__(self):
+        for it, (pdb, samples) in enumerate(self.dataset.items()):
+            fp = os.path.join(self.pdb_dir, pdb + '.pdb.gz')
+            esm_fp = os.path.join(self.esm_dir, f'{pdb}.pt')
+            if not (os.path.exists(fp) and os.path.exists(esm_fp)):
+                print('skipping PDB', pdb)
+                continue
+            atoms = process_pdb(fp)
+            seq_emb_dict = torch.load(esm_fp, map_location=self.device)
+
+            for i, xyz in enumerate(samples['coords']):
+                chain, res = nearest_residue(atoms, xyz)
+                esm_emb = seq_emb_dict.get(chain + '_' + res[1:])
+                if esm_emb is None:
+                    continue
+                label = samples['labels'][i]
+                yield esm_emb, pdb, label
+    
+    def __len__(self):
+        total = 0
+        for pdb, samples in self.dataset.items():
+            total += len(samples['labels'])
+        return total
     
 class SiteDataset(IterableDataset):
     '''
@@ -888,7 +940,7 @@ class NoneCollater:
 
     def __call__(self, batch, filter_batch=True):
         if filter_batch:
-            batch = list(filter(lambda x: (x[0][0] is not None) & (x[0][1] is not None), batch))
+            batch = list(filter(lambda x: (x is not None) & (x[0][0] is not None) & (x[0][1] is not None), batch))
         elem = batch[0]
         if isinstance(elem, BaseData):
             return Batch.from_data_list(batch, self.follow_batch,
