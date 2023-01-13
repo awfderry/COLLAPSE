@@ -11,26 +11,19 @@ The repo is organized as follows:
 
 ## Requirements
 
-The COLLAPSE package requires the following dependencies, tested with the following versions. We recommend installing in a Conda environment.
-- python==3.7.12
-- torch==1.9.1
-- torch_geometric=2.0.4
-- torch_scatter=2.0.9
-- numpy=1.21.5
-- pandas=1.3.5
-- scipy=1.7.3
-- atom3d=0.2.5
-- biopython=1.79
-
-COLLAPSE also requires the Geometric Vector Perceptron (GVP), which can be installed from the following repo: https://github.com/drorlab/gvp-pytorch.
-
-Scripts may require additional dependencies, which may be installed using conda or pip as needed.
-
-To create a Conda environment and download required packages, run the following script:
+We recommend installing COLLAPSE in a Conda environment (tested with GCC version 10.1.0). To create a Conda environment and download required packages on a machine with GPU, run the following script:
 
 ```
 ./install_dependencies.sh
 ```
+
+For CPU-only functionality, you can run the following:
+
+```
+./install_dependencies_cpu.sh
+```
+
+Scripts may require additional dependencies, which may be installed using conda or pip as needed.
 
 
 ## Installation

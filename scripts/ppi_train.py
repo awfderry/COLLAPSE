@@ -6,8 +6,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.loader import DataLoader
-from models import MLPPaired
-from data import PPIDataset
+from collapse.models import MLPPaired
+from collapse.data import PPIDataset
 from collapse import initialize_model
 
 from sklearn.metrics import roc_auc_score, average_precision_score
@@ -20,14 +20,17 @@ def train_loop(epoch, gnn_model, ff_model, loader, criterion, optimizer, device)
 
     losses = []
     print_frequency = 1000
-    for it, (original, mutated) in enumerate(loader):
+    for it, (original, mutated, y) in enumerate(loader):
         original = original.to(device)
         mutated = mutated.to(device)
+        y = y.squeeze().to(device)
+       	if len(y.shape) < 1:
+            continue
         optimizer.zero_grad()
         out_original, _ = gnn_model.online_encoder(original, return_projection=False)
         out_mutated, _ = gnn_model.online_encoder(mutated, return_projection=False)
         output = ff_model(out_original, out_mutated)
-        loss = criterion(output, original.y)
+        loss = criterion(output, y)
         loss.backward()
         losses.append(loss.item())
         optimizer.step()
@@ -49,16 +52,19 @@ def test(gnn_model, ff_model, loader, criterion, device):
     y_true = []
     y_pred = []
 
-    for it, (original, mutated) in enumerate(loader):
+    for it, (original, mutated, y) in enumerate(loader):
         original = original.to(device)
         mutated = mutated.to(device)
+        y = y.squeeze().to(device)
+        if len(y.shape) < 1:
+            continue
         out_original, _ = gnn_model.online_encoder(original, return_projection=False)
         out_mutated, _ = gnn_model.online_encoder(mutated, return_projection=False)
         output = ff_model(out_original, out_mutated)
         
-        loss = criterion(output, original.y)
+        loss = criterion(output, y)
         losses.append(loss.item())
-        y_true.extend(original.y.tolist())
+        y_true.extend(y.tolist())
         y_pred.extend(torch.sigmoid(output).tolist())
 
     y_true = np.array(y_true)
@@ -72,20 +78,13 @@ def save_weights(model, weight_dir):
     torch.save(model.state_dict(), weight_dir)
 
 def train(args, device, log_dir, rep=None):
-    train_dataset = PPIDataset(os.path.join(args.data_dir, 'train'), args.radius, lamb=0.0)
-    val_dataset = PPIDataset(os.path.join(args.data_dir, 'val'), args.radius, lamb=0.0)
-    test_dataset = PPIDataset(os.path.join(args.data_dir, 'test'), args.radius, lamb=0.0)
+    train_dataset = PPIDataset(os.path.join(args.data_dir, 'train'))
+    val_dataset = PPIDataset(os.path.join(args.data_dir, 'val'))
+    test_dataset = PPIDataset(os.path.join(args.data_dir, 'test'))
     
     train_loader = DataLoader(train_dataset, args.batch_size, num_workers=4)
     val_loader = DataLoader(val_dataset, args.batch_size, num_workers=4)
     test_loader = DataLoader(test_dataset, args.batch_size, num_workers=4)
-    
-    for original, mutated in train_loader:
-        dummy_graph = original.clone()
-        dummy_graph.x = torch.randn_like(dummy_graph.x)
-        dummy_graph.edge_s = torch.randn_like(dummy_graph.edge_s)
-        dummy_graph.edge_v = torch.randn_like(dummy_graph.edge_v)
-        break
 
     gnn_model = initialize_model(args.checkpoint, device=device, train=True)
     ff_model = MLPPaired(args.hidden_dim).to(device)
@@ -101,14 +100,14 @@ def train(args, device, log_dir, rep=None):
     criterion.to(device)
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
-    best_val_loss = 999
+    best_val_auroc = 0.0
 
     for epoch in range(1, args.num_epochs + 1):
         start = time.time()
         train_loss = train_loop(epoch, gnn_model, ff_model, train_loader, criterion, optimizer, device)
         print('validating...')
         val_loss, auroc, auprc, _, _ = test(gnn_model, ff_model, val_loader, criterion, device)
-        if val_loss < best_val_loss:
+        if auroc > best_val_auroc:
             torch.save({
                 'epoch': epoch,
                 'gcn_state_dict': gnn_model.state_dict(),
@@ -116,7 +115,7 @@ def train(args, device, log_dir, rep=None):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': train_loss,
             }, os.path.join(log_dir, f'best_weights_rep{rep}.pt'))
-            best_val_loss = val_loss
+            best_val_auroc = auroc
         elapsed = (time.time() - start)
         print('Epoch: {:03d}, Time: {:.3f} s'.format(epoch, elapsed))
         print(f'\tTrain loss {train_loss}, Val loss {val_loss}, Val AUROC {auroc}, Val auprc {auprc}')
@@ -144,7 +143,7 @@ if __name__ == "__main__":
     parser.add_argument('--rep', type=int, default=0)
     parser.add_argument('--finetune', action='store_true')
     parser.add_argument('--checkpoint', type=str, default='data/checkpoints/collapse_base.pt')
-    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--hidden_dim', type=int, default=512)
     parser.add_argument('--num_epochs', type=int, default=5)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
@@ -152,13 +151,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    log_dir = args.log_dir
+    cpt = args.checkpoint.split('/')[-1].strip('.pt')
         
     print('seed:', args.rep)
     if args.finetune:
-        log_dir = os.path.join('logs', f'ppi_{args.checkpoint}')
+        log_dir = os.path.join('logs', f'ppi_{cpt}')
     else:
-        log_dir = os.path.join('logs', f'ppi_fixed_{args.checkpoint}')
+        log_dir = os.path.join('logs', f'ppi_fixed_{cpt}')
     if not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
     np.random.seed(args.rep)

@@ -6,7 +6,7 @@ import torch
 import math
 import random
 import pickle
-from torch.utils.data import IterableDataset
+from torch.utils.data import Dataset, IterableDataset
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
 from atom3d.datasets import load_dataset
@@ -26,15 +26,18 @@ from collapse.byol_pytorch import BYOL
 from collapse.models import CDDModel
 
 import pathlib
-DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
-np.random.seed(2)
+
+DATA_DIR = os.environ.get('DATA_DIR')
+if DATA_DIR is None:
+    DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
+print(DATA_DIR)
+# np.random.seed(2)
 
 """
 Define parameters and standard transforms for converting atom environments to graphs (from GVP). 
 """
 # =========================
 
-_NUM_ATOM_TYPES = 13
 _element_mapping = lambda x: {
     'C': 0,
     'N': 1,
@@ -49,6 +52,16 @@ _element_mapping = lambda x: {
     'Ca': 10, 'CA': 10,
     'Mg': 11, 'MG': 11,
 }.get(x, 12)
+
+# _element_mapping = lambda x: {
+#                 'H' : 0,
+#                 'C' : 1,
+#                 'N' : 2,
+#                 'O' : 3,
+#                 'F' : 4,
+#                 'S' : 5,
+#                 'Cl': 6, 'CL': 6,
+#                 'P' : 7}.get(x, 8)
 
 def _normalize(tensor, dim=-1):
     '''
@@ -158,13 +171,15 @@ transform = BaseTransform()
 Utility functions for processing environments
 """
 
-def process_pdb(pdb_file, chain=None):
+def process_pdb(pdb_file, chain=None, include_hets=True):
     atoms = fo.bp_to_df(fo.read_any(pdb_file))
     atoms = first_model_filter(atoms)
     if chain:
         atoms = atoms[atoms.chain == chain]
     atoms = atoms[~atoms.hetero.str.contains('W')]
     atoms = atoms[atoms.element != 'H'].reset_index(drop=True)
+    if not include_hets:
+        atoms = atoms[atoms.resname.isin(atom_info.aa)].reset_index(drop=True)
     return atoms
 
 def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_base.pt'), train=False, device='cpu'):
@@ -172,6 +187,7 @@ def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_bas
     model = BYOL(
         CDDModel(out_dim=512, scatter_mean=True, attn=False, chain_ind=False),
         projection_size=512,
+        projection_hidden_size=1024,
         dummy_graph=dummy_graph,
         hidden_layer = -1,
         use_momentum = True,
@@ -227,6 +243,38 @@ def embed_residue(atom_df, chain_resid, model, device='cpu', include_hets=True, 
     emb = emb.squeeze().cpu().numpy()
     return emb
 
+def embed_pocket(atom_df, pocket_resids, model, device='cpu', include_hets=True, env_radius=10.0):
+    emb_data = col.defaultdict(list)
+    graphs = []
+    if not include_hets:
+        atom_df = atom_df[atom_df.resname.isin(atom_info.aa)].reset_index(drop=True)
+    for (c, i, r), res_df in atom_df.groupby(['chain', 'residue', 'resname']):
+        if r not in atom_info.aa[:20]:
+            continue
+        resid = atom_info.aa_to_letter(r) + str(i)
+        if (c + '_' + resid) not in pocket_resids:
+            continue
+        emb_data['chains'].append(c)
+        chain_atoms = atom_df[atom_df.chain == c]
+        out = extract_env_from_resid(chain_atoms, (c, resid), env_radius, res_df.copy(), train_mode=False)
+        if out is None:
+            continue
+        graphs.append(out)
+        emb_data['resids'].append(resid)
+        confidence = res_df['bfactor'].iloc[0]  # for AlphaFold pLDDT
+        emb_data['confidence'].append(confidence)
+    graphs = Batch.from_data_list(graphs).to(device)
+    with torch.no_grad():
+        try:
+            embs, _ = model.online_encoder(graphs, return_projection=False)
+        except RuntimeError as e:
+            if "CUDA out of memory" not in str(e): raise(e)
+            torch.cuda.empty_cache()
+            print('Out of Memory error!', flush=True)
+            return None
+    emb_data['embeddings'] = np.stack(embs.cpu().numpy(), 0)
+    return emb_data
+
 def sample_functional_center(df, resid, train_mode=True):
     func_atoms = atom_info.abbr_key_atom_dict[resid[0]]
     if train_mode:
@@ -240,16 +288,23 @@ def sample_functional_center(df, resid, train_mode=True):
     center = np.mean(coords, axis=0)
     return center
 
-def extract_env_from_resid(df, ch_resid, env_radius, res_df=None, train_mode=False):
+def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center=False, train_mode=False):
     chain, resid = ch_resid
     if resid[0] == 'X':
-        print('Nonstandard residue')
+        #print('Nonstandard residue')
         return None
     if res_df is None:
         df['resname'] = df['resname'].apply(atom_info.aa_to_letter)
         rows = (df['chain'] == chain) & (df['resname'] == resid[0]) & (df['residue'] == int(resid[1:]))
         res_df = df[rows]
-    center = sample_functional_center(res_df, resid, train_mode)
+    if ca_center:
+        try:
+            center = res_df[res_df['name'] == 'CA'][['x', 'y', 'z']].astype(np.float32).to_numpy()[0]
+        except:
+            return None
+    else:
+        center = sample_functional_center(res_df, resid, train_mode)
+    # center = np.mean(res_df[['x', 'y', 'z']].astype(np.float32).to_numpy(), axis=0)
         
     df = df.reset_index()
     kd_tree = scipy.spatial.cKDTree(df[['x', 'y', 'z']].to_numpy())
@@ -259,6 +314,9 @@ def extract_env_from_resid(df, ch_resid, env_radius, res_df=None, train_mode=Fal
     
     if len(df_env) == 0:
         print('No environment found')
+        # print(ch_resid)
+        # print(df.head())
+        # print(df_env.head())
         return None
     
     graph = transform(df_env)
@@ -296,42 +354,54 @@ class CDDTransform(object):
     Transforms LMDB dataset entries to featurized graphs. Returns a `torch_geometric.data.Data` graph
     '''
     
-    def __init__(self, env_radius=10.0, single_chain=False, device='cpu'):
+    def __init__(self, env_radius=10.0, single_chain=False, include_af2=False, device='cpu', num_pairs_sampled=1):
         self.env_radius = env_radius
         self.single_chain = single_chain
+        self.include_af2 = include_af2
         self.device = device
+        self.num_pairs_sampled = num_pairs_sampled
     
-    def __call__(self, elem, num_pairs_sampled=1):
+    def __call__(self, elem):
         # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
         with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
-            msa = MSA(AlignIO.read(f, 'fasta'))
+            try:
+                msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
+            except:
+                print(cdd_id)
+                return [((None, None), None)]
         # msa = elem['msa']
+        
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
-        except:
-            print('failed for MSA', cdd_id)
-            return (None, None), None
+        except Exception as e:
+            # print('failed for MSA', cdd_id)
+            return [((None, None), None)]
+        
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
+        df1, df2 = self._process_dataframes(elem['atoms'], pair_ids)
 
         pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
         
-        pos1, pos2, cons = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=num_pairs_sampled)
+        pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
+        graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
+        # print('graphs', graphs_list)
+        return graphs_list
+    
+    def _process_graphs(self, pos1, pos2, cons, df1, df2, pair_ids, pair_resids):
         resid1, resid2 = pair_resids[0][pos1], pair_resids[1][pos2]
         chain1, chain2 = pair_ids[0][-1], pair_ids[1][-1]
         
-        atoms = elem['atoms']
-        df1, df2 = self._process_dataframes(atoms, pair_ids)
-        graph1 = extract_env_from_resid(df1, (chain1, resid1), self.env_radius, train_mode=True)
-        graph2 = extract_env_from_resid(df2, (chain2, resid2), self.env_radius, train_mode=True)
+        graph1 = extract_env_from_resid(df1.copy(), (chain1, resid1), self.env_radius, train_mode=True)
+        graph2 = extract_env_from_resid(df2.copy(), (chain2, resid2), self.env_radius, train_mode=True)
         
         metadata = {
             'res_labels': (atom_info.aa_to_label(resid1[0]), atom_info.aa_to_label(resid2[0])),
             'res_ids': (resid1, resid2),
             'pdb_ids': pair_ids,
-            'cdd_id': cdd_id,
+            # 'cdd_id': cdd_id,
             'conservation': cons
         }
         
@@ -387,6 +457,35 @@ class EmbedTransform(object):
         elem['embeddings'] = outdata['embeddings']
         return elem
 
+class FeatureDataset(Dataset):
+    def __init__(self, ff1, ff2, label_dict):
+        with open(label_dict, 'rb') as f:
+            label_dict = pickle.load(f)
+        self.x1, names = self._process_ff_file(ff1)
+        self.x2, _ = self._process_ff_file(ff2)
+        self.labels = torch.tensor([float(label_dict[n]) for n in names])
+        
+    def __len__(self):
+        return len(self.x1)
+    
+    def __getitem__(self, idx):
+        return self.x1[idx, :], self.x2[idx, :], self.labels[idx]
+    
+    def _process_ff_file(self, ff):
+        names = []
+        vecs = []
+        with open(ff) as f:
+            for line in f:
+                l = line.strip().split()
+                if line.startswith('#'):
+                    if ('PDBID_LIST' in line):
+                        names.extend([t.strip(',') for t in l[2:]])
+                else:
+                    vecs.append([float(t) for t in l[1:-5]])
+        vecs = torch.tensor(vecs)
+        assert len(names) == len(vecs)
+        return vecs, names
+    
 
 class CDDGraphDataset(IterableDataset):
     '''
@@ -447,7 +546,8 @@ class ProteinMeanTransform(object):
         emb = item['embeddings']
         emb = torch.mean(torch.tensor(emb), 0)
         return emb, item['label']
-        
+
+
 class MSPTransform(object):
     def __init__(self, env_radius=10.0, device=None):
         self.env_radius = env_radius
@@ -457,8 +557,8 @@ class MSPTransform(object):
         mutation = item['id'].split('_')[-1]
         orig_df = item['original_atoms']
         mut_df = item['mutated_atoms']
-        orig_df = orig_df[orig_df.element != 'H'].reset_index(drop=True)
-        mut_df = mut_df[mut_df.element != 'H'].reset_index(drop=True)
+        # orig_df = orig_df[orig_df.element != 'H'].reset_index(drop=True)
+        # mut_df = mut_df[mut_df.element != 'H'].reset_index(drop=True)
     
         orig_center = self._extract_mut_coords(orig_df, mutation)
         mut_center = self._extract_mut_coords(mut_df, mutation)
@@ -476,7 +576,8 @@ class MSPTransform(object):
         chain, res = mutation[1], int(mutation[2:-1])
         idx = df.index[(df.chain.values == chain) & (df.residue.values == res)].values
         res_df = df.loc[idx, :]
-        coords = sample_functional_center(res_df, mutation[0])
+        coords = res_df[res_df['name'] == 'CA'][['x', 'y', 'z']].astype(np.float32).to_numpy()[0]
+        # coords = sample_functional_center(res_df, mutation[0], train_mode=False)
         # mask = torch.zeros(len(df), dtype=torch.long, device=self.device)
         # mask[idx] = 1
         return coords
@@ -511,8 +612,8 @@ class PPIDataset(IterableDataset):
                 shuffle=True)
         return gen
 
-    def _extract_env(self, df, chain_res, label):
-        df = df[df.element != 'H'].reset_index(drop=True)
+    def _extract_env(self, df, chain_res):
+        # df = df[df.element != 'H'].reset_index(drop=True)
         df = df[~df.hetero.str.contains('W')].reset_index(drop=True)
         chain, resnum = chain_res
         rows = (df['chain'] == chain) & (df['residue'] == int(resnum))
@@ -521,22 +622,7 @@ class PPIDataset(IterableDataset):
             return None
         resname = res_df.resname.tolist()[0]
         resid = atom_info.aa_to_letter(resname) + str(resnum)
-        if resid[0] == 'X':
-            return None
-        center = sample_functional_center(res_df, resid)
-            
-        df = df.reset_index()
-        kd_tree = scipy.spatial.cKDTree(df[['x', 'y', 'z']].to_numpy())
-        distances, idx = kd_tree.query(center, k=250)
-        within_r = distances <= self.env_radius
-        pt_idx = idx[within_r]
-
-        df_env = df.iloc[pt_idx, :]
-        
-        if len(df_env) == 0:
-            return None
-        graph = transform(df_env)
-        graph.y = label
+        graph = extract_env_from_resid(df.copy(), (chain, resid), ca_center=True)
         
         return graph
 
@@ -566,13 +652,13 @@ class PPIDataset(IterableDataset):
                         chain_res1 = row[['chain0', 'residue0']].values
                         chain_res2 = row[['chain1', 'residue1']].values
                         try:
-                            graph1 = self._extract_env(bound1, chain_res1, label)
-                            graph2 = self._extract_env(bound2, chain_res2, label)
+                            graph1 = self._extract_env(bound1, chain_res1)
+                            graph2 = self._extract_env(bound2, chain_res2)
                         except KeyError:
                             continue
                         if (graph1 is None) or (graph2 is None):
                             continue
-                        yield graph1, graph2
+                        yield graph1, graph2, label
 
     def _create_labels(self, positives, negatives, num_pos, neg_pos_ratio):
         frac = min(1, num_pos / positives.shape[0])
@@ -674,7 +760,8 @@ class SiteCoordDataset(IterableDataset):
             atoms = process_pdb(fp)
 
             for i, xyz in enumerate(samples['coords']):
-                graph = extract_env_from_coords(atoms.copy(), xyz)
+                chain_resid = nearest_residue(atoms.copy(), xyz)
+                graph = extract_env_from_resid(atoms.copy(), chain_resid)
                 if graph is None:
                     continue
                 label = samples['labels'][i]
@@ -685,41 +772,7 @@ class SiteCoordDataset(IterableDataset):
         for pdb, samples in self.dataset.items():
             total += len(samples['labels'])
         return total
-
-class ESMDataset(IterableDataset):
-    '''
-    Yields graphs from a dictionary of xyz coordinates defining PDB sites.
-    '''
     
-    def __init__(self, dataset, pdb_dir, esm_dir, env_radius=10.0, device='cpu'):
-        self.dataset = dataset
-        self.pdb_dir = pdb_dir
-        self.esm_dir = esm_dir
-        self.device = device
-    
-    def __iter__(self):
-        for it, (pdb, samples) in enumerate(self.dataset.items()):
-            fp = os.path.join(self.pdb_dir, pdb + '.pdb.gz')
-            esm_fp = os.path.join(self.esm_dir, f'{pdb}.pt')
-            if not (os.path.exists(fp) and os.path.exists(esm_fp)):
-                print('skipping PDB', pdb)
-                continue
-            atoms = process_pdb(fp)
-            seq_emb_dict = torch.load(esm_fp, map_location=self.device)
-
-            for i, xyz in enumerate(samples['coords']):
-                chain, res = nearest_residue(atoms, xyz)
-                esm_emb = seq_emb_dict.get(chain + '_' + res[1:])
-                if esm_emb is None:
-                    continue
-                label = samples['labels'][i]
-                yield esm_emb, pdb, label
-    
-    def __len__(self):
-        total = 0
-        for pdb, samples in self.dataset.items():
-            total += len(samples['labels'])
-        return total
     
 class SiteDataset(IterableDataset):
     '''
@@ -763,14 +816,18 @@ class SiteDataset(IterableDataset):
         res_df = df[rows]
         
         resid = res_df['resname'].apply(atom_info.aa_to_letter).iloc[0] + str(resnum)
-        center = sample_functional_center(res_df, resid, self.train_mode)
+        # center = sample_functional_center(res_df, resid, self.train_mode)
+        try:
+            center = res_df[res_df['name'] == 'CA'][['x', 'y', 'z']].astype(np.float32).to_numpy()[0]
+        except:
+            return None
 
         pt_idx = kd_tree.query_ball_point(center, r=self.env_radius, p=2.0)
         df_env = df.iloc[pt_idx, :]
         
         if len(df_env) == 0:
             return None
-        graph = self.transform(df_env)
+        graph = transform(df_env)
         graph.resid = resid
         
         return graph
@@ -780,11 +837,89 @@ class SiteDataset(IterableDataset):
         for r, row in self.dataset.iterrows():
             total += len(row[2])
         return total
+
+
+class ESMDataset(IterableDataset):
+    '''
+    Yields graphs from a dictionary of xyz coordinates defining PDB sites.
+    '''
     
+    def __init__(self, dataset, pdb_dir, esm_dir, env_radius=10.0, device='cpu'):
+        self.dataset = dataset
+        self.pdb_dir = pdb_dir
+        self.esm_dir = esm_dir
+        self.device = device
+    
+    def __iter__(self):
+        for it, (pdb, samples) in enumerate(self.dataset.items()):
+            fp = os.path.join(self.pdb_dir, pdb + '.pdb.gz')
+            esm_fp = os.path.join(self.esm_dir, f'{pdb}.pt')
+            if not (os.path.exists(fp) and os.path.exists(esm_fp)):
+                print('skipping PDB', pdb)
+                continue
+            atoms = process_pdb(fp)
+            seq_emb_dict = torch.load(esm_fp, map_location=self.device)
+
+            for i, xyz in enumerate(samples['coords']):
+                chain, res = nearest_residue(atoms, xyz)
+                esm_emb = seq_emb_dict.get(chain + '_' + res[1:])
+                if esm_emb is None:
+                    continue
+                label = samples['labels'][i]
+                yield esm_emb, pdb, label
+    
+    def __len__(self):
+        total = 0
+        for pdb, samples in self.dataset.items():
+            total += len(samples['labels'])
+        return total
+    
+
+class ESMSiteDataset(IterableDataset):
+    '''
+    Yields graphs from a dictionary of xyz coordinates defining PDB sites.
+    '''
+    
+    def __init__(self, dataset, pdb_dir, esm_dir, env_radius=10.0, device='cpu'):
+        self.dataset = pd.read_csv(dataset, converters={'locs': lambda x: eval(x)})
+        self.pdb_dir = pdb_dir
+        self.esm_dir = esm_dir
+        self.env_radius = env_radius
+        self.device = device
+    
+    def __iter__(self):
+        for pdb_chain, df in self.dataset.groupby('pdb'):
+            pdb = pdb_chain[:4]
+            chain = pdb_chain[4:]
+            fp = os.path.join(self.pdb_dir, pdb + '.pdb.gz')
+
+            esm_fp = os.path.join(self.esm_dir, f'{pdb}.pt')
+            if not (os.path.exists(fp) and os.path.exists(esm_fp)):
+                print('skipping PDB', pdb)
+                continue
+            seq_emb_dict = torch.load(esm_fp, map_location=self.device)
+            
+            atom_df = process_pdb(fp, chain=chain)
+
+            for r, (site, _, locs, source, desc) in df.iterrows():
+                for resnum in locs:
+                    if resnum not in atom_df.residue.tolist():
+                        continue
+                    resid = atom_df[atom_df.residue == resnum]['resname'].apply(atom_info.aa_to_letter).iloc[0] + str(resnum)
+                    esm_emb = seq_emb_dict.get(f'{chain}_{resnum}')
+                    if esm_emb is None:
+                        continue
+                    yield esm_emb, pdb_chain, source, desc, resid
+                    
+    def __len__(self):
+        total = 0
+        for r, row in self.dataset.iterrows():
+            total += len(row[2])
+        return total
     
 class MSA(MultipleSeqAlignment):
-    def __init__(self, alignment, name=None, pdb_filter=None):
-        self.pdb_filter = pdb_filter
+    def __init__(self, alignment, name=None, include_af2=None):
+        self.include_af2 = include_af2
         self.name = name
         self.full_alignment_length = alignment.get_alignment_length()
         self.full_msa = alignment
@@ -843,12 +978,16 @@ class MSA(MultipleSeqAlignment):
         return start, end
     
     def _pdb_filter(self, record):
-        if ('|pdb|' in record.id) or ('|sp|' in record.id):
+        if ('|pdb|' in record.id):
+            return True
+        elif (self.include_af2) and ('|sp|' in record.id):
             return True
         return False
     
     def _pdb_seq_filter(self, record):
         if '|' not in record.id:
+            if (not self.include_af2) and (len(record.id.split('_')[0]) != 4):
+                return False
             return True
         return False
 
@@ -897,7 +1036,9 @@ class MSA(MultipleSeqAlignment):
 
     def sample_position_pairs(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
         sample_pos = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
-        
+        # print(sample_pos)
+        # print(self.full_msa.get_alignment_length())
+        # print(type(int(sample_pos[0])))
         if num_pairs == 1:
             sample_pos = int(sample_pos[0])
             cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos]) + 1)
@@ -907,9 +1048,12 @@ class MSA(MultipleSeqAlignment):
         else:
             pos_pairs = []
             for pos in sample_pos:
+                pos = int(pos)
+                cons = 1 / (self.calculate_entropy(self.full_msa[:, pos]) + 1)
+                # print(cons)
                 pos1 = self.align_pos_to_seq_pos(pos, seq_r1)
                 pos2 = self.align_pos_to_seq_pos(pos, seq_r2)
-                pos_pairs.append((pos1, pos2))
+                pos_pairs.append((pos1, pos2, cons))
             return pos_pairs
         
     def align_pos_to_seq_pos(self, pos, record):
@@ -940,7 +1084,7 @@ class NoneCollater:
 
     def __call__(self, batch, filter_batch=True):
         if filter_batch:
-            batch = list(filter(lambda x: (x is not None) & (x[0][0] is not None) & (x[0][1] is not None), batch))
+            batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None))]# if (item[0][0] is not None) & (item[0][1] is not None)]
         elem = batch[0]
         if isinstance(elem, BaseData):
             return Batch.from_data_list(batch, self.follow_batch,

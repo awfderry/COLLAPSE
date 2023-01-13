@@ -8,9 +8,10 @@ import parallel as par
 import subprocess
 import json
 import argparse
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', type=str, default='../data/datasets/cdd_af2_dataset')
+parser.add_argument('--dataset', type=str, default='/scratch/users/aderry/collapse/datasets/cdd_af2_dataset')
 args = parser.parse_args()
 
 def get_chain_sequences(df):
@@ -50,17 +51,17 @@ def cdd_transform(item):
     return item
 
 def align_pdb_to_msa(cdd_id):
-    if os.path.exists(f'../data/msa_pdb_aligned/{cdd_id}.afa'):
+    if os.path.exists(f'/scratch/users/aderry/collapse/msa_pdb_aligned/{cdd_id}.afa'):
         return
     
     path = os.path.join('../data/msa', cdd_id + '.FASTA')
     with open(path) as f:
         alignment = AlignIO.read(f, "fasta")
-    msa = MSA(alignment)
+    msa = MSA(alignment, include_af2=True)
     if len(msa) <= 1:
         return
 
-    with open(f'../data/msa_pdb_aligned/{cdd_id}.afa', 'w') as f:
+    with open(f'/scratch/users/aderry/collapse/msa_pdb_aligned/{cdd_id}.afa', 'w') as f:
         f.write(msa.__format__('fasta'))
 
     for record in msa:
@@ -83,8 +84,8 @@ def align_pdb_to_msa(cdd_id):
         atoms = pdb_dataset[dataset_idx]['atoms']
         chain_sequences, resids = get_chain_sequences(atoms)
         chain_seq_filt = [(c, s) for c, s in chain_sequences if c == pdb_chain]
-        write_fasta(chain_seq_filt, f'../data/fasta/{pdb_chain}.fasta')
-        subprocess.call(f'./muscle -profile -in1 ../data/msa_pdb_aligned/{cdd_id}.afa -in2 ../data/fasta/{pdb_chain}.fasta -out ../data/msa_pdb_aligned/{cdd_id}.afa'.split())
+        write_fasta(chain_seq_filt, f'/scratch/users/aderry/collapse/fasta/{pdb_chain}.fasta')
+        subprocess.call(f'./muscle -profile -in1 /scratch/users/aderry/collapse/msa_pdb_aligned/{cdd_id}.afa -in2 /scratch/users/aderry/collapse/fasta/{pdb_chain}.fasta -out /scratch/users/aderry/collapse/msa_pdb_aligned/{cdd_id}.afa -quiet'.split())
 
 with open('pdb_resid.json', 'r') as fout:
     pdb_to_resid = json.load(fout)
@@ -97,4 +98,7 @@ cdd_set = set(cdd_dataset_.ids())
 pdb_dataset = load_dataset('../data/cdd_pdb_sp', 'pdb.gz', transform=cdd_transform)
 
 inputs = [tuple([c]) for c in cdd_set]
-par.submit_jobs(align_pdb_to_msa, inputs, num_threads=16)
+
+# par.submit_jobs(align_pdb_to_msa, inputs, num_threads=16)
+for cdd_id in tqdm(cdd_set):
+    align_pdb_to_msa(cdd_id)

@@ -42,6 +42,20 @@ def contiguous_high_confidence_regions(plddt, threshold=50):
     to_keep = np.array(to_keep)
     return to_keep
 
+def get_chain_sequences(df):
+    """Return list of tuples of (id, sequence) for different chains of monomers in a given dataframe."""
+    # Keep only CA of standard residues
+    df = df[df['name'] == 'CA'].drop_duplicates()
+    df = df[df['resname'].apply(lambda x: Poly.is_aa(x, standard=True))]
+    df['resname'] = df['resname'].apply(Poly.three_to_one)
+    chain_sequences = []
+    chain_residues = []
+    for c, chain in df.groupby(['ensemble', 'subunit', 'structure', 'model', 'chain']):
+        seq = ''.join(chain['resname'])
+        chain_sequences.append((str(c[2])+'_'+str(c[-1]), seq))
+        chain_residues.append([c[-1]+'_'+seq[i]+str(r) for i, r in enumerate(chain['residue'].tolist())])
+    return chain_sequences, chain_residues
+
 """Methods to extract protein interface labels pair. -- from ATOM3D"""
 
 index_columns = \

@@ -46,7 +46,7 @@ for fold, fold_chains in enumerate(np.array_split(dataset.pdb_chain.unique(), 10
     for c in fold_chains:
         chain_to_fold[c] = fold
 
-model = initialize_model(device=device)
+model = initialize_model(checkpoint='../data/checkpoints/byol-radius-10.0-cutoff-4.5.pt', device=device)
 
 for p in dataset.pdb_chain.unique():
     pdb, chain = p.split('_')
@@ -71,6 +71,8 @@ for p in tqdm(dataset.pdb_chain.unique(), desc='Embedding proteins'):
 
 fold_data = {i:{'X':[], 'y':[]} for i in range(10)}
 for r, row in tqdm(dataset.iterrows(), total=len(dataset), desc='Extracting residues'):
+    if row['pdb_chain'] not in pdb_embeddings:
+        continue
     emb_dict = pdb_embeddings[row['pdb_chain']]
     emb = emb_dict.get(str(row['residue']))
     if emb is None:

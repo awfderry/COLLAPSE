@@ -83,7 +83,7 @@ for resname, cos_list in cosines.items():
     data = {pvals[i]: quantiles[i] for i in range(len(quantiles))}
     data['mean'] = mean_cos
     data['std'] = std_cos
-    with open(f'../data/background_stats/{resname}_background.pkl', 'wb') as f:
+    with open(f'../data/background_stats/{resname}_background_old.pkl', 'wb') as f:
         pickle.dump(data, f)
-    with open(f'../data/background_stats/{resname}_background_dist.pkl', 'wb') as f:
+    with open(f'../data/background_stats/{resname}_background_dist_old.pkl', 'wb') as f:
         pickle.dump(cos_list, f)

@@ -4,7 +4,7 @@ The functions and classes in this file are modified from https://github.com/luci
 
 import copy
 from functools import wraps
-
+import math
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -53,15 +53,16 @@ class EMA():
         super().__init__()
         self.beta = beta
 
-    def update_average(self, old, new):
+    def update_average(self, old, new, current_epoch):
         if old is None:
             return new
+        self.beta = 1 - (1 - self.beta) * (math.cos(math.pi * current_epoch / 5000) + 1) / 2
         return old * self.beta + (1 - self.beta) * new
 
-def update_moving_average(ema_updater, ma_model, current_model):
+def update_moving_average(ema_updater, ma_model, current_model, current_epoch):
     for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
         old_weight, up_weight = ma_params.data, current_params.data
-        ma_params.data = ema_updater.update_average(old_weight, up_weight)
+        ma_params.data = ema_updater.update_average(old_weight, up_weight, current_epoch)
 
 # MLP class for projector and predictor
 
@@ -83,7 +84,7 @@ class MLP(nn.Module):
 # and pipe it into the projecter and predictor nets
 
 class NetWrapper(nn.Module):
-    def __init__(self, net, projection_size, projection_hidden_size, layer = -1, extract_center=True, dense=False):
+    def __init__(self, net, projection_size, projection_hidden_size, layer=-1, extract_center=True, dense=False):
         super().__init__()
         self.net = net
         self.layer = layer
@@ -156,7 +157,7 @@ class BYOL(nn.Module):
         dummy_graph,
         hidden_layer = -1,
         projection_size = 512,
-        projection_hidden_size = 1024,
+        projection_hidden_size = 4096,
         augment_fn = None,
         augment_fn2 = None,
         moving_average_decay = 0.99,
@@ -192,21 +193,21 @@ class BYOL(nn.Module):
         del self.target_encoder
         self.target_encoder = None
 
-    def update_moving_average(self):
+    def update_moving_average(self, current_epoch):
         assert self.use_momentum, 'you do not need to update the moving average, since you have turned off momentum for the target encoder'
         assert self.target_encoder is not None, 'target encoder has not been created yet'
-        update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder)
+        update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder, current_epoch)
 
     def forward(
         self,
         graph1, graph2, loss_weight=1.0,
-        return_embedding = False,
-        return_projection = True
+        return_embedding=False,
+        return_projection=True
     ):
         # assert not (self.training and x.shape[0] == 1), 'you must have greater than 1 sample when training, due to the batchnorm in the projection layer'
 
         if return_embedding:
-            return self.online_encoder(graph1, return_projection = return_projection)[0], self.online_encoder(graph2, return_projection = return_projection)[0]
+            return self.online_encoder(graph1, return_projection=return_projection)[0], self.online_encoder(graph2, return_projection=return_projection)[0]
 
         online_proj_one, _ = self.online_encoder(graph1, return_projection=return_projection)
         online_proj_two, _ = self.online_encoder(graph2, return_projection=return_projection)

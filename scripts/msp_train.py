@@ -20,7 +20,7 @@ def train_loop(epoch, gnn_model, ff_model, loader, criterion, optimizer, device)
     start = time.time()
 
     losses = []
-    print_frequency = 10
+    print_frequency = 100
     for it, (original, mutated, y) in enumerate(loader):
         original = original.to(device)
         mutated = mutated.to(device)
@@ -98,6 +98,7 @@ def train(args, device, log_dir, rep=None):
     ff_model = MLPPaired(args.hidden_dim, args.hidden_dim).to(device)
 
     best_val_loss = 999
+    best_val_auroc = 0.0
     
     if args.finetune:
         params = [x for x in gnn_model.parameters()] + [x for x in ff_model.parameters()]
@@ -115,7 +116,7 @@ def train(args, device, log_dir, rep=None):
         train_loss = train_loop(epoch, gnn_model, ff_model, train_loader, criterion, optimizer, device)
         print('validating...')
         val_loss, auroc, auprc, _, _ = test(gnn_model, ff_model, val_loader, criterion, device)
-        if val_loss < best_val_loss:
+        if auroc > best_val_auroc:
             torch.save({
                 'epoch': epoch,
                 'gcn_state_dict': gnn_model.state_dict(),
@@ -123,7 +124,7 @@ def train(args, device, log_dir, rep=None):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': train_loss,
             }, os.path.join(log_dir, f'best_weights_rep{rep}.pt'))
-            best_val_loss = val_loss
+            best_val_auroc = auroc
         elapsed = (time.time() - start)
         print('Epoch: {:03d}, Time: {:.3f} s'.format(epoch, elapsed))
         print(f'\tTrain loss {train_loss}, Val loss {val_loss}, Val AUROC {auroc}, Val auprc {auprc}')

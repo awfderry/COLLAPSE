@@ -18,7 +18,7 @@ pdb_dir = '/oak/stanford/groups/rbaltman/aderry/pdb/localpdb/mirror/pdb'
 
 print(site_name)
 
-emb_dir = '/scratch/users/aderry/prosite_embeddings_nocons'
+emb_dir = '/scratch/users/aderry/prosite_embeddings'
 # emb_dir = '/scratch/users/aderry/prosite_esm'
 
 with open(os.path.join(emb_dir, f'{site_name}.pkl'), 'rb') as f:
@@ -52,7 +52,7 @@ emb_all = emb_all[tptn_idx]
 labels_all = labels_all[tptn_idx]
 
 svm_grid = {
-    'C': [1, 10, 100, 500, 1000, 2500, 5000]
+    'C': [1, 10, 100, 500, 700, 1000, 2000, 3000, 5000, 7000, 10000]
 }
 
 inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=2)
@@ -83,14 +83,14 @@ for i, (train_idx, test_idx) in enumerate(outer_cv.split(emb_all, labels_all)):
     print('\nBest Score:\n', clf.best_score_)
     
 
-np.save(f'../data/results/{site_name}_svm_y_prob', tptn_scores)
-np.save(f'../data/results/{site_name}_svm_y_true', tptn_labels)
+np.save(f'../data/results/{site_name}_old_y_prob', tptn_scores)
+np.save(f'../data/results/{site_name}_old_y_true', tptn_labels)
 
 
 fold_scores = []
 for model in models:
     fold_scores.append(model.predict_proba(emb_test))
 
-np.save(f'../data/results/{site_name}_svm_test_y_prob', fold_scores)
-np.save(f'../data/results/{site_name}_svm_test_y_true', labels_test)
-np.save(f'../data/results/{site_name}_svm_test_pdbs', pdbs_test)
+np.save(f'../data/results/{site_name}_old_test_y_prob', fold_scores)
+np.save(f'../data/results/{site_name}_old_test_y_true', labels_test)
+np.save(f'../data/results/{site_name}_old_test_pdbs', pdbs_test)

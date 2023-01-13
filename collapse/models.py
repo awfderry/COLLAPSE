@@ -4,10 +4,10 @@ import torch.nn.functional as F
 import torch_scatter
 from torch_geometric.utils import softmax
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
-
 from gvp import GVP, GVPConvLayer, LayerNorm
 
 
+# _NUM_ATOM_TYPES = 9
 _NUM_ATOM_TYPES = 13
 _DEFAULT_V_DIM = (100, 16)
 _DEFAULT_E_DIM = (32, 1)
@@ -159,23 +159,30 @@ class MLPPaired(torch.nn.Module):
 
 
 class MLP(torch.nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim):
+    def __init__(self, in_dim, hidden_dims, out_dim, dropout=0.5):
         super(MLP, self).__init__()
-        self.fc1 = nn.Linear(in_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, out_dim)
+        self.layers = nn.ModuleList()
+        self.layers.append(nn.Linear(in_dim, hidden_dims[0]))
+        if len(hidden_dims) > 1:
+            for i, h in enumerate(hidden_dims[1:]):
+                self.layers.append(nn.Linear(hidden_dims[i], h))
+        self.layers.append(nn.Linear(hidden_dims[-1], out_dim))
+        self.dropout = dropout
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, p=0.50, training=self.training)
-        x = self.fc2(x)
+        for layer in self.layers[:-1]:
+            x = F.relu(layer(x))
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.layers[-1](x)
         return x
 
 class LSTM(torch.nn.Module):
     def __init__(self, embedding_dim, hidden_dim, output_dim, n_layers, bidirectional=True, dropout=0.5):
         super().__init__()
-        self.lstm = nn.LSTM(embedding_dim,
+        self.lstm = nn.GRU(embedding_dim,
                             hidden_dim,
                             num_layers=n_layers,
+                            dropout=dropout,
                             bidirectional=bidirectional,
                             batch_first=True)
         self.fc1 = nn.Linear(hidden_dim * 2, hidden_dim)
@@ -183,16 +190,55 @@ class LSTM(torch.nn.Module):
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
 
+    def attention(self, output, hidden, mask):	
+        attn_weights = torch.bmm(output, hidden.unsqueeze(2)).squeeze(2)
+        attn_weights[~mask] = float('-inf')
+        attn_weights = F.softmax(attn_weights, 1)
+        new_hidden_state = torch.bmm(output.transpose(1, 2), attn_weights.unsqueeze(2)).squeeze(2)
+
+        return new_hidden_state
+
     def forward(self, embeddings, lengths):
         packed_embedded = pack_padded_sequence(embeddings, lengths, batch_first=True, enforce_sorted=False) 
         
-        packed_output, (hidden, cell) = self.lstm(packed_embedded)
-        cat = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
-        rel = self.relu(cat)
-        dense1 = self.fc1(rel)
+        packed_output, (hidden) = self.lstm(packed_embedded)
+        # output, lens = pad_packed_sequence(packed_output, batch_first=True)
+        # mask = torch.arange(output.size(1))[None, :] < lens[:, None]
+        hidden_cat = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
+        # hidden_attn = self.attention(output, hidden_cat, mask)
+        dense1 = self.fc1(hidden_cat)
         drop = self.dropout(dense1)
-        preds = self.fc2(drop)
+        rel = self.relu(drop)
+        preds = self.fc2(rel)
         return preds
+
+class AttentionAggregator(torch.nn.Module):
+    def __init__(self, embedding_dim, hidden_dim, output_dim, dropout=0.5):
+        super().__init__()
+        self.attn_nn = nn.Linear(embedding_dim, 1)
+        self.fc1 = nn.Linear(embedding_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, output_dim)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, embeddings, lengths):
+        # embeddings = b x L x 512
+        lengths = torch.tensor(lengths)
+        mask = torch.arange(embeddings.size(1))[None, :] < lengths[:, None]
+        attn = self.attn_nn(embeddings).squeeze() # b x L
+        attn[~mask] = float('-inf')
+        attn = F.softmax(attn, 1)
+        attn_out = torch.bmm(embeddings.transpose(1,2), attn.unsqueeze(2)).squeeze(2) # b x 512
+        x = self.fc1(attn_out)
+        x = self.dropout(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.dropout(x)
+        x = self.relu(x)
+        preds = self.fc3(x)
+        return preds
+    
 
 if __name__ == "__main__":
     from data import CDDTransform

@@ -20,14 +20,13 @@ def main(args):
     
     site_name = os.path.splitext(os.path.basename(args.site_db))[0]
     functional_residue = atom_info.prosite_residues[site_name]
-    with open(f'background_stats/{functional_residue}_background.pkl', 'rb') as f:
+    with open(f'../data/background_stats/{functional_residue}_background.pkl', 'rb') as f:
         aa_stats = pickle.load(f)
     
     if args.cutoff is not None:
         cutoff_list = [args.cutoff]
     else:
-        cutoff_list = [0.995, 0.999, 0.9995, 0.9999, 0.99999]
-        percentiles = ['5e-3', '1e-3', '5e-4', '1e-4', '1e-5']
+        cutoff_list = [5e-3, 1e-3, 5e-4, 1e-4, 1e-5]
 
     with open(args.site_db, 'rb') as datafile:
         db_data = pickle.load(datafile)
@@ -48,8 +47,10 @@ def main(args):
     bin_labels = np.array([label_defs[lab] for lab in labels])
     
     tp_idx = np.where(labels == 'TP')[0]
-    fp_pdbs = set(pdb_ids[np.where(labels == 'FP')[0]])
-    fn_pdbs = set(pdb_ids[np.where(labels == 'FN')[0]])
+    fn_idx = np.where(labels == 'FN')[0]
+    fp_idx = np.where(labels == 'FP')[0]
+    fp_pdbs = set(pdb_ids[fp_idx])
+    fn_pdbs = set(pdb_ids[fn_idx])
     
     print('Site:', site_name)
     print(f'Total hits in database = {np.sum(bin_labels)}')
@@ -101,7 +102,7 @@ def main(args):
                 results_df['FN correct'].append(float(len(fn_pdb_hits)) / len(fn_pdbs))
                 results_df['FP correct'].append(float(len(fp_pdb_hits)) / len(fp_pdbs))
                 results_df['precision'].append(precision)
-                results_df['cutoff'].append(percentiles[i])
+                results_df['cutoff'].append(cutoff)
                 results_df['iter_time'].append(elapsed)
                 results_df['n_query'].append(n_query)
     
@@ -113,7 +114,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script for searching database given query residues')
     parser.add_argument('site_db', type=str, help='directory containing pre-computed embeddings for protein database')
     parser.add_argument('outfile', type=str, help='file to save results')
-    parser.add_argument('--checkpoint', type=str, default='data/checkpoints/collapse_base.pt')
+    parser.add_argument('--checkpoint', type=str, default='../data/checkpoints/collapse_base.pt')
     parser.add_argument('--num_query', type=int, default=1, help='number of queries to sample')
     parser.add_argument('--num_iter', type=int, default=5, help='number of search iterations')
     parser.add_argument('--num_sample', type=int, default=10, help='number of samples')
