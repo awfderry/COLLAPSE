@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/sampleUse.py", line 7, in <module>
+    model = initialize_model(device=DEVICE)
+  File "/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/collapse/data.py", line 196, in initialize_model
+    cpt = torch.load(checkpoint, map_location=device)
+  File "/oak/stanford/groups/rbaltman/alptartici/miniconda3/envs/collapse_alp3/lib/python3.9/site-packages/torch/serialization.py", line 699, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/oak/stanford/groups/rbaltman/alptartici/miniconda3/envs/collapse_alp3/lib/python3.9/site-packages/torch/serialization.py", line 231, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/oak/stanford/groups/rbaltman/alptartici/miniconda3/envs/collapse_alp3/lib/python3.9/site-packages/torch/serialization.py", line 212, in __init__
+    super(_open_file, self).__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/collapse/../data/checkpoints/collapse_base.pt'

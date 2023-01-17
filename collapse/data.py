@@ -26,10 +26,11 @@ from collapse.byol_pytorch import BYOL
 from collapse.models import CDDModel
 
 import pathlib
+#DATA_DIR = os.environ.get('DATA_DIR')
+DATA_DIR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/data'
 
-DATA_DIR = os.environ.get('DATA_DIR')
-if DATA_DIR is None:
-    DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
+#if DATA_DIR is None:
+#    DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
 print(DATA_DIR)
 # np.random.seed(2)
 

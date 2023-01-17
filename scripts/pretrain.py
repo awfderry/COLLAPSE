@@ -42,6 +42,7 @@ parser.add_argument('--dim', default=512, type=int,
                     help='dimensionality of learned representations')
 parser.add_argument('--edge_cutoff', default=4.5, type=float, 
                     help='cutoff for defining spatial graph')
+## NOTETOSELF: this env radius may be changed.
 parser.add_argument('--env_radius', default=10.0, type=float, 
                     help='radius of atomic environment')
 parser.add_argument('--parallel', action='store_true',

@@ -1,10 +1,13 @@
 #!/bin/bash
 
 # Create conda environment
-conda create -n collapse python=3.9
-conda activate collapse
+conda create -n collapse_alp3 python=3.9
+source activate collapse_alp3
 
 # Install conda packages
+
+pip install numpy
+ml gcc/10.1.0
 pip install torch==1.11.0+cu113  --extra-index-url https://download.pytorch.org/whl/cu113
 
 export TORCH=1.11.0

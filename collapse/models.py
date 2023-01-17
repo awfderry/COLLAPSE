@@ -29,7 +29,7 @@ class CDDModel(nn.Module):
     
     :param num_rbf: number of radial bases to use in the edge embedding
     '''
-    def __init__(self, num_rbf=16, out_dim=512, scatter_mean=True, attn=False, chain_ind=False):
+    def __init__(self, num_rbf=16, out_dim=512, scatter_mean=False, attn=False, distance_based=True, chain_ind=False):
         
         super().__init__()
         self.scatter_mean = scatter_mean
@@ -111,6 +111,9 @@ class CDDModel(nn.Module):
             attn = self.attn_nn(out).view(-1, 1)
             attn = softmax(attn, batch_id)
             out = torch_scatter.scatter_mean(attn * out, batch_id, dim=0)
+        elif self.distance_based:
+            pass
+        ## ADD a line here
 
         return out
    
