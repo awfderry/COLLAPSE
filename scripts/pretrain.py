@@ -21,6 +21,7 @@ import wandb
 
 torch.autograd.set_detect_anomaly(True)
 
+# takes input arguments
 parser = argparse.ArgumentParser(description='BYOL implementation for aligned protein environments')
 parser.add_argument('--val_dir', type=str, default='../data/datasets/pfam_pdb_balanced',
                     help='location of dataset')
@@ -58,17 +59,22 @@ print(f'using {NUM_GPUS} GPUs')
 
 @torch.no_grad()
 def evaluate(loader, model, device):
+    # setting the model to evaluation mode
     model.eval()
+    # initializing empty lists to store the results
     cls_x = []
     cls_y = []
     losses = []
+    # list for the cosine similarities for positive class
     pos_cosine = []
+    # list for the cosine similarities for the negative (different class) class samples
     neg_cosine = []
     for i, ((graph1, graph2), meta) in enumerate(loader):
         graph1 = graph1.to(device)
         graph2 = graph2.to(device)
         res1, res2 = meta['res_labels']
         cons = meta['conservation'].to(device)
+        # calculate the loss using the model and the cons metadata
         loss = model(graph1, graph2, cons)
         losses.append(loss.item())
         
