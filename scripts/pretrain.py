@@ -100,6 +100,7 @@ def evaluate(loader, model, device):
 
 def main():
     
+    print('got to main')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     wandb.init(project="collapse", name=args.run_name, config=vars(args))
@@ -107,6 +108,7 @@ def main():
     train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     
+    print("got to the line before dummy_graph = torch.load(os.path.join(os.environ[DATA_DIR], 'dummy_graph.pt'))")
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
     
     model = BYOL(
@@ -117,6 +119,8 @@ def main():
         use_momentum=(not args.tied_weights)
     ).to(device)
     
+    print('created model w BYOL')
+    
     device_ids = [i for i in range(torch.cuda.device_count())]
 
     # opt = torch.optim.SGD(params=model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
@@ -124,6 +128,8 @@ def main():
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=10, verbose=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=5000, eta_min=1e-6)
 
+    print('set scheduler')
+    
     if args.checkpoint != "":
         cpt = torch.load(args.checkpoint, map_location=device)
         model.load_state_dict(cpt['model_state_dict'])
@@ -141,9 +147,11 @@ def main():
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
           
     model.train()
+    print('switced to the train mode')
     
     wandb.watch(model)
     
+    print('got to the epochs')
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         model.train()
         quit() #CHANGED
