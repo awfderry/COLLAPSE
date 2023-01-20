@@ -29,7 +29,7 @@ class CDDModel(nn.Module):
     
     :param num_rbf: number of radial bases to use in the edge embedding
     '''
-    def __init__(self, num_rbf=16, out_dim=512, scatter_mean=False, attn=False, distance_based=True, chain_ind=False):
+    def __init__(self, num_rbf=16, out_dim=512, scatter_mean=True, attn=False, distance_based=False, chain_ind=False):
         
         super().__init__()
         self.scatter_mean = scatter_mean
@@ -97,6 +97,7 @@ class CDDModel(nn.Module):
         h_E = self.W_e(h_E)
         
         batch_id = batch.batch
+        print('batch_id', batch_id, '\n\n\n')
         
         for layer in self.layers:
             h_V = layer(h_V, batch.edge_index, h_E)
@@ -112,8 +113,12 @@ class CDDModel(nn.Module):
             attn = softmax(attn, batch_id)
             out = torch_scatter.scatter_mean(attn * out, batch_id, dim=0)
         elif self.distance_based:
+            # the batch contains the graph
+            # get the graph dists
+            # convert dists to weights
+            # do weighted averages
             pass
-        ## ADD a line here
+        
 
         return out
    
