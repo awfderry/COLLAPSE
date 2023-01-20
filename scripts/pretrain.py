@@ -146,6 +146,7 @@ def main():
     
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         model.train()
+        quit() #CHANGED
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
@@ -196,3 +197,4 @@ def train_cls(x, y):
 
 if __name__ == "__main__":
     main()
+
