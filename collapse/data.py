@@ -137,6 +137,7 @@ class BaseTransform:
         self.edge_cutoff = edge_cutoff
         self.num_rbf = num_rbf
         self.device = device
+        self.dists = None
             
     def __call__(self, df):
         '''
@@ -322,6 +323,12 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
     
     graph = transform(df_env)
     
+    # get distances to center for atoms in the environment
+    dist = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)[0]
+    df_env['distance_to_center'] = dist
+    print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
+    graph.dists = dist
+    
     return graph
 
 def extract_env_from_coords(df, center, env_radius=10.0):
@@ -334,6 +341,13 @@ def extract_env_from_coords(df, center, env_radius=10.0):
         return None
     
     graph = transform(df_env)
+    
+    # get distances to center for atoms in the environment
+    dist = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)[0]
+    df_env['distance_to_center'] = dist
+    print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
+    graph.dists = dist
+    
     return graph
 
 def nearest_residue(df, center):
