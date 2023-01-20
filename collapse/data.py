@@ -366,13 +366,7 @@ class CDDTransform(object):
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
-        with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
-            try:
-                msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
-            except:
-                print(cdd_id)
-                return [((None, None), None)]
-        # msa = elem['msa']
+        msa = elem['msa']
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
