@@ -137,7 +137,7 @@ class BaseTransform:
         self.edge_cutoff = edge_cutoff
         self.num_rbf = num_rbf
         self.device = device
-        self.dists = None
+        #self.dists = None
             
     def __call__(self, df):
         '''
@@ -149,16 +149,31 @@ class BaseTransform:
         with torch.no_grad():
             coords = torch.as_tensor(df[['x', 'y', 'z']].to_numpy(),
                                      dtype=torch.float32, device=self.device)
+            
             atoms = torch.as_tensor(list(map(_element_mapping, df.element)), dtype=torch.long, device=self.device)
 
             edge_index = torch_cluster.radius_graph(coords, r=self.edge_cutoff)
 
             edge_s, edge_v = _edge_features(coords, edge_index, D_max=self.edge_cutoff, num_rbf=self.num_rbf, device=self.device)
             
+            #CHANGED
+            #dist_to_center =  torch.as_tensor(df['distance_to_center'].to_numpy(), dtype=torch.float32, device=self.device)
+            
+            #self.dists = df['distance_to_center']
+            
+            """
+            data = Data(x=coords, atoms=atoms,
+                        edge_index=edge_index, edge_s=edge_s, edge_v=edge_v, dist_to_center=dist_to_center)
+            """
+        
+        
             data = Data(x=coords, atoms=atoms,
                         edge_index=edge_index, edge_s=edge_s, edge_v=edge_v)
+            
             if 'same_chain' in df.columns:
                 data.chain_ind = torch.as_tensor(df.same_chain.tolist(), dtype=torch.long, device=self.device)
+              
+            #data.dists = df['distance_to_center']
 
             return data
 
@@ -321,12 +336,14 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
         # print(df_env.head())
         return None
     
-    graph = transform(df_env)
-    
     # get distances to center for atoms in the environment
     dist = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)[0]
-    df_env['distance_to_center'] = dist
-    print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
+    #df_env['distance_to_center'] = dist
+    #print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
+    
+    
+    graph = transform(df_env)
+    # TRYING TO SEE IF THERE WILL BE AN ERROR W ENUMARATE
     graph.dists = dist
     
     return graph
@@ -340,13 +357,15 @@ def extract_env_from_coords(df, center, env_radius=10.0):
     if len(df_env) == 0:
         return None
     
-    graph = transform(df_env)
-    
     # get distances to center for atoms in the environment
     dist = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)[0]
     df_env['distance_to_center'] = dist
     print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
+    
+ 
+    graph = transform(df_env)
     graph.dists = dist
+
     
     return graph
 
@@ -375,19 +394,14 @@ class CDDTransform(object):
         self.include_af2 = include_af2
         self.device = device
         self.num_pairs_sampled = num_pairs_sampled
+        print('CDDTransform indeed got called. printing from CDDTransform.__init__()')
     
     def __call__(self, elem):
         # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
-        with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
-            try:
-                msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
-            except:
-                print(cdd_id)
-                return [((None, None), None)]
-        # msa = elem['msa']
+        msa = elem['msa']
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
@@ -411,6 +425,10 @@ class CDDTransform(object):
         
         graph1 = extract_env_from_resid(df1.copy(), (chain1, resid1), self.env_radius, train_mode=True)
         graph2 = extract_env_from_resid(df2.copy(), (chain2, resid2), self.env_radius, train_mode=True)
+        
+        print('in _process_graphs(), printing graph1.dists', graph1.dists, '\n\n')
+        print('in _process_graphs(), printing graph2.dists', graph2.dists, '\n\n')
+              
         
         metadata = {
             'res_labels': (atom_info.aa_to_label(resid1[0]), atom_info.aa_to_label(resid2[0])),

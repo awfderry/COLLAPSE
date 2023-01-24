@@ -1,0 +1,153 @@
+{
+    "os": "Linux-3.10.0-1160.80.1.el7.x86_64-x86_64-with-glibc2.17",
+    "python": "3.9.15",
+    "heartbeatAt": "2023-01-20T02:38:38.082104",
+    "startedAt": "2023-01-20T02:38:37.852766",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "--val_dir",
+        "/scratch/users/aderry/collapse/datasets/pfam_pdb_balanced",
+        "--data_dir",
+        "/scratch/users/aderry/collapse/datasets/cdd_af2_dataset",
+        "--run_name",
+        "alpPretrain1",
+        "--tied_weights"
+    ],
+    "state": "running",
+    "program": "/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/scripts/pretrain.py",
+    "codePath": "scripts/pretrain.py",
+    "git": {
+        "remote": "https://github.com/awfderry/COLLAPSE.git",
+        "commit": "74adabe956e900ae558e1547c1af496d96c0e41e"
+    },
+    "email": null,
+    "root": "/oak/stanford/groups/rbaltman/alptartici/COLLAPSE",
+    "host": "sh02-15n01.int",
+    "username": "tartici",
+    "executable": "/oak/stanford/groups/rbaltman/alptartici/miniconda3/envs/collapse_alp3/bin/python",
+    "cpu_count": 20,
+    "cpu_count_logical": 20,
+    "cpu_freq": {
+        "current": 1628.0854,
+        "min": 1200.0,
+        "max": 3400.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 1482.421,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1200.146,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1200.146,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1275.146,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2095.312,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 3056.396,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1376.513,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 3099.902,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1300.048,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1200.585,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1199.853,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1206.005,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1199.853,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 3099.902,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1300.195,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 3025.488,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1204.833,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1200.0,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1200.0,
+            "min": 1200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 1210.546,
+            "min": 1200.0,
+            "max": 3400.0
+        }
+    ],
+    "disk": {
+        "total": 23.98828125,
+        "used": 5.4761810302734375
+    },
+    "gpu": "Tesla V100-SXM2-16GB",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "Tesla V100-SXM2-16GB",
+            "memory_total": 17179869184
+        }
+    ],
+    "memory": {
+        "total": 251.6544532775879
+    }
+}

@@ -5,6 +5,7 @@ import torch_scatter
 from torch_geometric.utils import softmax
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from gvp import GVP, GVPConvLayer, LayerNorm
+import inspect
 
 
 # _NUM_ATOM_TYPES = 9
@@ -86,6 +87,22 @@ class CDDModel(nn.Module):
         :param batch: `torch_geometric.data.Batch` with data attributes
                       as returned from a BaseTransform
         '''
+        
+        
+        #print('batch.dists\n', batch.dists, '\n\n\n')
+        
+        print('getting the members of the batch object')
+        dictOfAttr = vars(batch)
+        for key in dictOfAttr:
+            if torch.is_tensor(dictOfAttr[key]):
+                print('attr ', key, 'with dimensions ', dictOfAttr[key].shape, '\n')
+            else:
+                print('attr ', key)
+            print(dictOfAttr[key], '\n\n')
+        print('these are all the members of batch')
+        
+        
+        
         if self.scatter_mean and self.attn:
             raise Exception('only one of scatter_mean and attn can be used at once')
         

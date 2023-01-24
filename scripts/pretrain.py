@@ -17,7 +17,7 @@ import os
 import argparse
 import datetime
 from tqdm import tqdm
-import wandb
+#import wandb
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -103,13 +103,18 @@ def main():
     print('got to main')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    wandb.init(project="collapse", name=args.run_name, config=vars(args))
+    #wandb.init(project="collapse", name=args.run_name, config=vars(args))
+    
+    print('will call CDDTransfrom and _process_graphs from pretrain.py')
     
     train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     
+    
     print("got to the line before dummy_graph = torch.load(os.path.join(os.environ[DATA_DIR], 'dummy_graph.pt'))")
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
+    
+    print('got to model')
     
     model = BYOL(
         CDDModel(out_dim=args.dim, scatter_mean=True, attn=False, chain_ind=False),
@@ -149,12 +154,12 @@ def main():
     model.train()
     print('switced to the train mode')
     
-    wandb.watch(model)
+    #wandb.watch(model)
     
     print('got to the epochs')
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         model.train()
-        quit() #CHANGED
+        #quit() #CHANGED
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
@@ -162,6 +167,9 @@ def main():
             #     quit()
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
+            print('in epoch 1 printing graph1.dists', graph1.dists, '\n\n')
+            print('in epoch 1, printing graph2.dists', graph2.dists, '\n\n')
+            quit() # CHANGED
             cons = meta['conservation'].to(device)
             with torch.cuda.amp.autocast():
                 try:
@@ -177,11 +185,11 @@ def main():
             opt.step()
             if not args.tied_weights:
                 model.update_moving_average(epoch) # update moving average of target encoder
-            wandb.log({'loss': loss.item()})
+            #wandb.log({'loss': loss.item()})
             # print(f'Iteration {i}: Loss: {loss.item()}')
         
         val_loss, acc, std, pos_cosine, neg_cosine = evaluate(val_loader, model, device)
-        wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
+        #wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
         
         # save your improved network
         if args.parallel:
