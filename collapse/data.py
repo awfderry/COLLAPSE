@@ -26,11 +26,10 @@ from collapse.byol_pytorch import BYOL
 from collapse.models import CDDModel
 
 import pathlib
-#DATA_DIR = os.environ.get('DATA_DIR')
-DATA_DIR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/data'
 
-#if DATA_DIR is None:
-#    DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
+DATA_DIR = os.environ.get('DATA_DIR')
+if DATA_DIR is None:
+    DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
 print(DATA_DIR)
 # np.random.seed(2)
 
@@ -137,7 +136,6 @@ class BaseTransform:
         self.edge_cutoff = edge_cutoff
         self.num_rbf = num_rbf
         self.device = device
-        #self.dists = None
             
     def __call__(self, df):
         '''
@@ -149,31 +147,16 @@ class BaseTransform:
         with torch.no_grad():
             coords = torch.as_tensor(df[['x', 'y', 'z']].to_numpy(),
                                      dtype=torch.float32, device=self.device)
-            
             atoms = torch.as_tensor(list(map(_element_mapping, df.element)), dtype=torch.long, device=self.device)
 
             edge_index = torch_cluster.radius_graph(coords, r=self.edge_cutoff)
 
             edge_s, edge_v = _edge_features(coords, edge_index, D_max=self.edge_cutoff, num_rbf=self.num_rbf, device=self.device)
             
-            #CHANGED
-            #dist_to_center =  torch.as_tensor(df['distance_to_center'].to_numpy(), dtype=torch.float32, device=self.device)
-            
-            #self.dists = df['distance_to_center']
-            
-            """
-            data = Data(x=coords, atoms=atoms,
-                        edge_index=edge_index, edge_s=edge_s, edge_v=edge_v, dist_to_center=dist_to_center)
-            """
-        
-        
             data = Data(x=coords, atoms=atoms,
                         edge_index=edge_index, edge_s=edge_s, edge_v=edge_v)
-            
             if 'same_chain' in df.columns:
                 data.chain_ind = torch.as_tensor(df.same_chain.tolist(), dtype=torch.long, device=self.device)
-              
-            #data.dists = df['distance_to_center']
 
             return data
 
@@ -394,7 +377,6 @@ class CDDTransform(object):
         self.include_af2 = include_af2
         self.device = device
         self.num_pairs_sampled = num_pairs_sampled
-        print('CDDTransform indeed got called. printing from CDDTransform.__init__()')
     
     def __call__(self, elem):
         # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
@@ -425,10 +407,6 @@ class CDDTransform(object):
         
         graph1 = extract_env_from_resid(df1.copy(), (chain1, resid1), self.env_radius, train_mode=True)
         graph2 = extract_env_from_resid(df2.copy(), (chain2, resid2), self.env_radius, train_mode=True)
-        
-        print('in _process_graphs(), printing graph1.dists', graph1.dists, '\n\n')
-        print('in _process_graphs(), printing graph2.dists', graph2.dists, '\n\n')
-              
         
         metadata = {
             'res_labels': (atom_info.aa_to_label(resid1[0]), atom_info.aa_to_label(resid2[0])),
