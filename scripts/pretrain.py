@@ -163,12 +163,14 @@ def main():
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
+            print('entered enumerate')
             # if i == 5:
             #     quit()
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
             print('in epoch 1 printing graph1.dists', graph1.dists, '\n\n')
             print('in epoch 1, printing graph2.dists', graph2.dists, '\n\n')
+            print('got to quit')
             quit() # CHANGED
             cons = meta['conservation'].to(device)
             with torch.cuda.amp.autocast():
