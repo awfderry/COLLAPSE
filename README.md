@@ -1,5 +1,5 @@
 # COLLAPSE
-COLLAPSE (COmpressed Latents Learned from Aligned Protein Structural Environments) is a representation learning method for protein structural and functional sites, as described in Derry et al. (2022). This repo contains all package functionality as well as scripts for functional site search and annotation, pre-training, and transfer learning on Prosite and ATOM3D datasets. For more details on COLLAPSE, please see our [preprint]().
+COLLAPSE (COmpressed Latents Learned from Aligned Protein Structural Environments) is a representation learning method for protein structural and functional sites, as described in Derry et al. (2022). This repo contains all package functionality as well as scripts for functional site search and annotation, pre-training, and transfer learning on Prosite and ATOM3D datasets. For more details on COLLAPSE, please see our [preprint](https://www.biorxiv.org/content/10.1101/2022.07.20.500713v2).
 
 The repo is organized as follows:
 
@@ -36,7 +36,7 @@ pip install .
 
 ## Downloading datasets
 
-Datasets are hosted on Zenodo. The following datasets are available for download depending on your use case.
+Datasets are hosted on [Zenodo](https://zenodo.org/record/6903423). The following datasets are available for download depending on your use case.
 
 - `background_stats.tar.gz`: folder containing background distributions and statistics (needed for annotation and search applications)
 - `checkpoints.tar.gz`: folder containing Pytorch checkpoints for model parameters (needed for all applications)

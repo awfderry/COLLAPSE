@@ -146,10 +146,10 @@ def main():
         # print(f"Using {len(device_ids)} GPUs")
         model = DataParallel(model, device_ids=device_ids)
         train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
-        val_loader = DataListLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+        val_loader = DataListLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
     else:
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
           
     model.train()
     print('switced to the train mode')
