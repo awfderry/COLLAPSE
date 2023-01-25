@@ -21,7 +21,6 @@ from tqdm import tqdm
 
 torch.autograd.set_detect_anomaly(True)
 
-# takes input arguments
 parser = argparse.ArgumentParser(description='BYOL implementation for aligned protein environments')
 parser.add_argument('--val_dir', type=str, default='../data/datasets/pfam_pdb_balanced',
                     help='location of dataset')
@@ -43,7 +42,6 @@ parser.add_argument('--dim', default=512, type=int,
                     help='dimensionality of learned representations')
 parser.add_argument('--edge_cutoff', default=4.5, type=float, 
                     help='cutoff for defining spatial graph')
-## NOTETOSELF: this env radius may be changed.
 parser.add_argument('--env_radius', default=10.0, type=float, 
                     help='radius of atomic environment')
 parser.add_argument('--parallel', action='store_true',
@@ -59,22 +57,17 @@ print(f'using {NUM_GPUS} GPUs')
 
 @torch.no_grad()
 def evaluate(loader, model, device):
-    # setting the model to evaluation mode
     model.eval()
-    # initializing empty lists to store the results
     cls_x = []
     cls_y = []
     losses = []
-    # list for the cosine similarities for positive class
     pos_cosine = []
-    # list for the cosine similarities for the negative (different class) class samples
     neg_cosine = []
     for i, ((graph1, graph2), meta) in enumerate(loader):
         graph1 = graph1.to(device)
         graph2 = graph2.to(device)
         res1, res2 = meta['res_labels']
         cons = meta['conservation'].to(device)
-        # calculate the loss using the model and the cons metadata
         loss = model(graph1, graph2, cons)
         losses.append(loss.item())
         
@@ -100,21 +93,19 @@ def evaluate(loader, model, device):
 
 def main():
     
-    print('got to main')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     #wandb.init(project="collapse", name=args.run_name, config=vars(args))
     
-    print('will call CDDTransfrom and _process_graphs from pretrain.py')
-    
     train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     
+    print('len(train_dataset)', len(train_dataset))
+    print('train_dataset[0]', train_dataset[0])
     
-    print("got to the line before dummy_graph = torch.load(os.path.join(os.environ[DATA_DIR], 'dummy_graph.pt'))")
+   
+    
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
-    
-    print('got to model')
     
     model = BYOL(
         CDDModel(out_dim=args.dim, scatter_mean=True, attn=False, chain_ind=False),
@@ -124,8 +115,6 @@ def main():
         use_momentum=(not args.tied_weights)
     ).to(device)
     
-    print('created model w BYOL')
-    
     device_ids = [i for i in range(torch.cuda.device_count())]
 
     # opt = torch.optim.SGD(params=model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
@@ -133,8 +122,6 @@ def main():
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=10, verbose=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=5000, eta_min=1e-6)
 
-    print('set scheduler')
-    
     if args.checkpoint != "":
         cpt = torch.load(args.checkpoint, map_location=device)
         model.load_state_dict(cpt['model_state_dict'])
@@ -152,26 +139,32 @@ def main():
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
           
     model.train()
-    print('switced to the train mode')
+    
+    """
+    counter = 0
+    for data in train_loader:
+        counter += 1
+        if data[0] == 4 or counter == 4:
+            break
+        print(data)
+    """
+    
     
     #wandb.watch(model)
     
-    print('got to the epochs')
+    
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         model.train()
-        #quit() #CHANGED
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
-            print('entered enumerate')
-            # if i == 5:
-            #     quit()
+            	# if i == 5:
+            
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
-            print('in epoch 1 printing graph1.dists', graph1.dists, '\n\n')
-            print('in epoch 1, printing graph2.dists', graph2.dists, '\n\n')
-            print('got to quit')
-            quit() # CHANGED
+            print('graph1.dists', graph1.dists)
+            print('graph2.dists', graph2.dists)
+            quit()
             cons = meta['conservation'].to(device)
             with torch.cuda.amp.autocast():
                 try:
@@ -215,4 +208,3 @@ def train_cls(x, y):
 
 if __name__ == "__main__":
     main()
-

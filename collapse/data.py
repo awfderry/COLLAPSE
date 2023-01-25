@@ -326,7 +326,7 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
     
     
     graph = transform(df_env)
-    # TRYING TO SEE IF THERE WILL BE AN ERROR W ENUMARATE
+    
     graph.dists = dist
     
     return graph
@@ -342,8 +342,8 @@ def extract_env_from_coords(df, center, env_radius=10.0):
     
     # get distances to center for atoms in the environment
     dist = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)[0]
-    df_env['distance_to_center'] = dist
-    print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
+    #df_env['distance_to_center'] = dist
+    #print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
     
  
     graph = transform(df_env)
@@ -380,15 +380,33 @@ class CDDTransform(object):
     
     def __call__(self, elem):
         # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
+        ELEM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/elemContent.txt'
+        file_elem = open(ELEM_FILE_ADDR, 'w')
+        print(elem, file=file_elem)
+        file_elem.close()
+        
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
-        msa = elem['msa']
+        #msa = elem['msa']
+        with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
+            try:
+                msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
+            except:
+                print(cdd_id)
+                return [((None, None), None)]
+        print('msa', msa)
+        print('len(msa)', len(msa))
+        print('msa.pdb_seq_records\n', msa.pdb_seq_records)
+        print('len(msa.pdb_seq_records)\n', len(msa.pdb_seq_records))
+        print('range(len(msa.pdb_seq_records))\n', range(len(msa.pdb_seq_records)))
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
         except Exception as e:
-            # print('failed for MSA', cdd_id)
+            print('error in the msa.sample_record_pair() is\n', e)
+            print('failed for MSA', cdd_id)
+            print('will return Nones')
             return [((None, None), None)]
         
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
@@ -1094,10 +1112,41 @@ class NoneCollater:
         self.exclude_keys = exclude_keys
 
     def __call__(self, batch, filter_batch=True):
+        FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/batchContent.txt'
+        file = open(FILE_ADDR, 'w')
+        """
+        for b in batch:
+            for item in b:
+                #file.writelines(item)
+                print(item, file=file)
+        file.close()
+        """
+        
+        try:
+            elem = batch[0]
+            print('elem', elem)
+        except IndexError:
+            raise ValueError("Input batch is empty before processing")
+        
         if filter_batch:
             batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None))]# if (item[0][0] is not None) & (item[0][1] is not None)]
-        elem = batch[0]
+            print('this condition has executed')
+            
+            for b in batch:
+                for item in b:
+                    #file.writelines(item)
+                    print(item, file=file)
+            file.close()
+            
+        
+        try:
+            elem = batch[0]
+        except IndexError:
+            raise ValueError("Input batch is empty")
+        
+        print('type(elem) is', type(elem))
         if isinstance(elem, BaseData):
+            print('from_data_list method got called')
             return Batch.from_data_list(batch, self.follow_batch,
                                         self.exclude_keys)
         elif isinstance(elem, torch.Tensor):
@@ -1118,4 +1167,6 @@ class NoneCollater:
         raise TypeError(f'DataLoader found invalid type: {type(elem)}')
 
     def collate(self, batch):  # Deprecated...
+        print('batch before filtering in the depracated collate function')
+        print(batch)
         return self(batch)
