@@ -91,17 +91,103 @@ class CDDModel(nn.Module):
         
         #print('batch.dists\n', batch.dists, '\n\n\n')
         
-        print('getting the members of the batch object')
+        # print('vars(batch[0])', vars(batch[0]))
+        #print('batch[0].dists', batch[0].dists)
+        #print('batch[0].distnodes', batch[0].distnodes)
+        
+        print('getting the members of the batch object\n')
         dictOfAttr = vars(batch)
+        
+        """
         for key in dictOfAttr:
             if torch.is_tensor(dictOfAttr[key]):
                 print('attr ', key, 'with dimensions ', dictOfAttr[key].shape, '\n')
             else:
                 print('attr ', key)
             print(dictOfAttr[key], '\n\n')
-        print('these are all the members of batch')
+        print('\nthese are all the members of batch')
+        
+        """
+        
+        if '_store' in dictOfAttr:
+            if 'dist_to_ctr' in dictOfAttr['_store']:
+                print('finally has the desired distance attributes')
+                print("batch._store['dist_to_ctr']", batch._store['dist_to_ctr'])
+                print('shape of dist_to_ctr ', batch._store['dist_to_ctr'].shape)
+                print("batch._store['node_index']", batch._store['node_index'])
+                print('shape of node_index ', batch._store['node_index'].shape)
+                print("mean distance ", torch.mean(batch._store['dist_to_ctr']))
+                print("min distance ", torch.min(batch._store['dist_to_ctr']))
+                print("max distance ", torch.max(batch._store['dist_to_ctr']))
+                print("median distance ", torch.median(batch._store['dist_to_ctr']))
+                self.scatter_mean = False
+                self.attn = False
+                self.distance_based = True
+                print('SUCCESS')
+        
+   
+      
+        
+        if self.scatter_mean and self.attn:
+            raise Exception('only one of scatter_mean and attn can be used at once')
+        
+        h_V = self.embed(batch.atoms)
+        if self.chain_ind:
+            h_V = torch.cat((h_V, batch.chain_ind.unsqueeze(1)), dim=-1)
+        h_E = (batch.edge_s, batch.edge_v)
+        h_V = self.W_v(h_V)
+        h_E = self.W_e(h_E)
+        
+        batch_id = batch.batch
+        #print('batch_id', batch_id, '\n\n\n')
+        
+        for layer in self.layers:
+            h_V = layer(h_V, batch.edge_index, h_E)
+
+        out = self.W_out(h_V)
+        if no_pool:
+            return out
+
+        elif self.scatter_mean: 
+            print('self.scatter_mean is executed inside CDDModel forward')
+            out = torch_scatter.scatter_mean(out, batch_id, dim=0)
+        elif self.attn: 
+            attn = self.attn_nn(out).view(-1, 1)
+            attn = softmax(attn, batch_id)
+            out = torch_scatter.scatter_mean(attn * out, batch_id, dim=0)
+        elif self.distance_based:
+            print('out.shape ', out.shape, '\n')
+            # the batch contains the graph
+            # get the graph dists
+            # convert dists to weights
+            # do weighted averages
+            print('SUCCESS, THIS CODE RAN SO YOU CAN IMPLEMENT DISTANCE')
+            quit()
+        
+        print('finalized the out inside CDDModel forward')
+
+        return out
+    
+    
+    def forward_dummy(self, batch, no_pool=False):
+        '''
+        Forward pass which can be adjusted based on task formulation.
+        
+        :param batch: `torch_geometric.data.Batch` with data attributes
+                      as returned from a BaseTransform
+        '''
+        
+        # running for the dummy graph
         
         
+        
+        
+        #print('testing the additional features')
+        #print("batch._store['dist_to_ctr']", batch._store['dist_to_ctr'])
+        #print("batch._store['node_index']", batch._store['node_index'])
+        
+   
+      
         
         if self.scatter_mean and self.attn:
             raise Exception('only one of scatter_mean and attn can be used at once')
@@ -124,6 +210,7 @@ class CDDModel(nn.Module):
             return out
 
         elif self.scatter_mean: 
+            print('self.scatter_mean is executed inside CDDModel forward')
             out = torch_scatter.scatter_mean(out, batch_id, dim=0)
         elif self.attn: 
             attn = self.attn_nn(out).view(-1, 1)
@@ -136,6 +223,7 @@ class CDDModel(nn.Module):
             # do weighted averages
             pass
         
+        print('finalized the out inside CDDModel forward')
 
         return out
    

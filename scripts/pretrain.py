@@ -101,12 +101,14 @@ def main():
     val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     
     print('len(train_dataset)', len(train_dataset))
-    print('train_dataset[0]', train_dataset[0])
+    #print('train_dataset[0]', train_dataset[0])
     
    
     
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
     
+    
+    # model is initialized with the dummy graph
     model = BYOL(
         CDDModel(out_dim=args.dim, scatter_mean=True, attn=False, chain_ind=False),
         projection_size=512,
@@ -114,6 +116,8 @@ def main():
         hidden_layer=-1,
         use_momentum=(not args.tied_weights)
     ).to(device)
+    
+    #quit()
     
     device_ids = [i for i in range(torch.cuda.device_count())]
 
@@ -140,6 +144,7 @@ def main():
           
     model.train()
     
+    
     """
     counter = 0
     for data in train_loader:
@@ -158,13 +163,25 @@ def main():
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
-            	# if i == 5:
+            print('i is ', i, '\n')
+            if i == 2:
+                quit()
             
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
-            print('graph1.dists', graph1.dists)
-            print('graph2.dists', graph2.dists)
-            quit()
+            #print('meta', meta, '\n')
+            print('graph1.dists', graph1.dists, '\n')
+            print('graph1.distnodes', graph1.distnodes, '\n')
+            print('graph1.center', graph1.center, '\n')
+            print('graph1.df_env', graph1.df_env, '\n')
+      
+            print('graph2.dists', graph2.dists[:10], '\n')
+            print('graph2.distnodes', graph2.distnodes[:10], '\n')
+            print('graph2.center', graph2.center[:10], '\n')
+            print('graph2.df_env', graph2.df_env, '\n')
+         
+            
+            
             cons = meta['conservation'].to(device)
             with torch.cuda.amp.autocast():
                 try:

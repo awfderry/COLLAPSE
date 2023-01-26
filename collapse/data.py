@@ -147,6 +147,15 @@ class BaseTransform:
         with torch.no_grad():
             coords = torch.as_tensor(df[['x', 'y', 'z']].to_numpy(),
                                      dtype=torch.float32, device=self.device)
+            
+            
+            # PASS NODE DISTANCES HERE
+            pt_idx = torch.as_tensor(df['index'].to_numpy(),
+                                    dtype=torch.int, device=self.device)
+            
+            dist_to_center = torch.as_tensor(df['distance_to_center'].to_numpy(),
+                                    dtype=torch.float32, device=self.device)
+            
             atoms = torch.as_tensor(list(map(_element_mapping, df.element)), dtype=torch.long, device=self.device)
 
             edge_index = torch_cluster.radius_graph(coords, r=self.edge_cutoff)
@@ -154,10 +163,15 @@ class BaseTransform:
             edge_s, edge_v = _edge_features(coords, edge_index, D_max=self.edge_cutoff, num_rbf=self.num_rbf, device=self.device)
             
             data = Data(x=coords, atoms=atoms,
-                        edge_index=edge_index, edge_s=edge_s, edge_v=edge_v)
+                        edge_index=edge_index, edge_s=edge_s, edge_v=edge_v,
+                       dist_to_ctr=dist_to_center, node_index=pt_idx)
+            
             if 'same_chain' in df.columns:
                 data.chain_ind = torch.as_tensor(df.same_chain.tolist(), dtype=torch.long, device=self.device)
 
+            data.__setitem__('dist_to_ctr', dist_to_center)
+            data.__setitem__('node_index', pt_idx)
+               
             return data
 
 """
@@ -309,8 +323,25 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
     df = df.reset_index()
     kd_tree = scipy.spatial.cKDTree(df[['x', 'y', 'z']].to_numpy())
 
+    # all nodes within the env_radius are extracted (not necessarily sorted)
     pt_idx = kd_tree.query_ball_point(center, r=env_radius, p=2.0)
+    
+    
+    # df_env only has the points in 10 angst radius. It also has x,y,z, coordinates, resnames,
     df_env = df.iloc[pt_idx, :]
+    
+    ## sanity check, should be deleted
+    inds = list(df_env.iloc[:, 0])
+    if len(inds) > 0:
+        if all(inds[i] <= inds[i + 1] for i in range(len(inds) - 1)):
+            print("The df_env list is sorted inside extract_env_function.")
+        else:
+            #print("The df_env list is not sorted.")
+            df_env.sort_values(by='index', inplace=True)
+            inds = list(df_env.iloc[:, 0])
+            if all(inds[i] <= inds[i + 1] for i in range(len(inds) - 1)):
+                print("The df_env successfully got sorted.")
+            
     
     if len(df_env) == 0:
         print('No environment found')
@@ -319,15 +350,34 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
         # print(df_env.head())
         return None
     
+    
+    
     # get distances to center for atoms in the environment
-    dist = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)[0]
-    #df_env['distance_to_center'] = dist
+    dists, distnodes = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)
+    
+    # re-sorting distances based on the node index
+    zipped_distlists = zip(dists, distnodes)
+    sorted_distlists = sorted(zipped_distlists, key=lambda x: x[1])
+    dists, distnodes = zip(*sorted_distlists)
+    
+    ## checking if the list nodes whose distances were calculated exactly match the list of nodes in the sorted df
+    if distnodes != list(df_env.iloc[:, 0]):
+        raise Exception("The nodes in the dataframe do not exactly match the nodes whose distances were calculated. This might be due to sorting")
+    else:
+        print('node lists match')
+   
+    
+    df_env['distance_to_center'] = dists
     #print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
     
     
     graph = transform(df_env)
     
-    graph.dists = dist
+    graph.dists = dists
+    graph.distnodes = distnodes
+    graph.center = center # experimental. curious what this will print
+    graph.df_env = df_env # experimental. curious what this will print
+    
     
     return graph
 
@@ -341,14 +391,23 @@ def extract_env_from_coords(df, center, env_radius=10.0):
         return None
     
     # get distances to center for atoms in the environment
-    dist = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)[0]
-    #df_env['distance_to_center'] = dist
+    dists, distnodes = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)
+    
+    # re-sorting distances based on the node index
+    zipped_distlists = zip(dists, distnodes)
+    sorted_distlists = sorted(zipped_distlists, key=lambda x: x[1])
+    dists, distnodes = zip(*sorted_distlists)
+    
+    df_env['distance_to_center'] = dists
     #print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
     
- 
+    
     graph = transform(df_env)
-    graph.dists = dist
-
+    
+    graph.dists = dists
+    graph.distnodes = distnodes
+    graph.center = center # experimental. curious what this will print
+    graph.df_env = df_env # experimental. curious what this will print
     
     return graph
 
@@ -380,10 +439,10 @@ class CDDTransform(object):
     
     def __call__(self, elem):
         # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
-        ELEM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/elemContent.txt'
-        file_elem = open(ELEM_FILE_ADDR, 'w')
-        print(elem, file=file_elem)
-        file_elem.close()
+        #ELEM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/elemContent.txt'
+        #file_elem = open(ELEM_FILE_ADDR, 'w')
+        #print(elem, file=file_elem)
+        #file_elem.close()
         
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
@@ -395,11 +454,14 @@ class CDDTransform(object):
             except:
                 print(cdd_id)
                 return [((None, None), None)]
+        
+        """
         print('msa', msa)
         print('len(msa)', len(msa))
         print('msa.pdb_seq_records\n', msa.pdb_seq_records)
         print('len(msa.pdb_seq_records)\n', len(msa.pdb_seq_records))
         print('range(len(msa.pdb_seq_records))\n', range(len(msa.pdb_seq_records)))
+        """
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
