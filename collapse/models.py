@@ -6,6 +6,7 @@ from torch_geometric.utils import softmax
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from gvp import GVP, GVPConvLayer, LayerNorm
 import inspect
+#import matplotlib.pyplot as plt
 
 
 # _NUM_ATOM_TYPES = 9
@@ -112,21 +113,41 @@ class CDDModel(nn.Module):
         if '_store' in dictOfAttr:
             if 'dist_to_ctr' in dictOfAttr['_store']:
                 print('finally has the desired distance attributes')
-                print("batch._store['dist_to_ctr']", batch._store['dist_to_ctr'])
-                print('shape of dist_to_ctr ', batch._store['dist_to_ctr'].shape)
-                print("batch._store['node_index']", batch._store['node_index'])
-                print('shape of node_index ', batch._store['node_index'].shape)
-                print("mean distance ", torch.mean(batch._store['dist_to_ctr']))
-                print("min distance ", torch.min(batch._store['dist_to_ctr']))
-                print("max distance ", torch.max(batch._store['dist_to_ctr']))
-                print("median distance ", torch.median(batch._store['dist_to_ctr']))
+                distances = batch._store['dist_to_ctr']
+                print("batch._store['dist_to_ctr']", distances)
+                print('shape of dist_to_ctr ', distances.shape)
+                node_index = batch._store['node_index']
+                print("batch._store['node_index']", node_index)
+                print('shape of node_index ', node_index.shape)
+                print("mean distance ", torch.mean(distances))
+                print("min distance ", torch.min(distances))
+                print("max distance ", torch.max(distances))
+                print("median distance ", torch.median(distances))
                 self.scatter_mean = False
                 self.attn = False
                 self.distance_based = True
                 print('SUCCESS')
+                
+                
+                """
+                fig1 = plt.figure()
+                plt.bar(distances.flatten())
+                plt.xlabel('distances (angstrom)')
+                plt.ylabel('atom count')
+                plt.savefig('../outputPretrain/distance-distribution-bar')
+                
+                fig2 = plt.figure()
+                plt.boxplot(distances.flatten())
+                plt.xlabel("distances (angstrom)")
+                #plt.ylabel("Frequency")
+                plt.savefig('../outputPretrain/distance-distribution-box')
         
-   
+                """
       
+                DISTS_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/dists.txt'
+                file_dists = open(DISTS_FILE_ADDR, 'w')
+                print(distances, file=file_dists)
+                file_dists.close()
         
         if self.scatter_mean and self.attn:
             raise Exception('only one of scatter_mean and attn can be used at once')
@@ -139,12 +160,18 @@ class CDDModel(nn.Module):
         h_E = self.W_e(h_E)
         
         batch_id = batch.batch
-        #print('batch_id', batch_id, '\n\n\n')
+        
         
         for layer in self.layers:
             h_V = layer(h_V, batch.edge_index, h_E)
 
+        
         out = self.W_out(h_V)
+        
+        print('batch_id\n', batch_id, '\n\n\n')
+        print('out shape ', out.shape, '\n\n')
+        print('out content\n', out, '\n\n')
+        
         if no_pool:
             return out
 
@@ -158,10 +185,38 @@ class CDDModel(nn.Module):
         elif self.distance_based:
             print('out.shape ', out.shape, '\n')
             # the batch contains the graph
-            # get the graph dists
-            # convert dists to weights
-            # do weighted averages
+            # get the graph dists sum
+            param_a = 2
+            param_b = 0.05
+            dist_weight = param_a - torch.exp(param_b * distances)
+            
+            # get the sum of transformed distances weights per batch
+    
+            
+            batch_dist_weight_sums = torch_scatter.scatter_add(dist_weight, batch_id, dim=0)
+           
+            # normalize the transformed distance weights so they add up to 1
+            # this is necessar
+            normalized_distance_weights = torch.tensor(dist_weight)
+            for i in range(dist_weight.shape[0]):
+                # get what batch the distance corresponds to
+                corresponding_batch = batch_id[i]
+                # get the sum of distances for that batch
+                sud = batch_dist_weight_sums[corresponding_batch]
+                # divide by the some of distances
+                normalized_distance_weights[i] = dist_weight[i]/sud
+           
+            # sanity check for the new weights
+            weights_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/weights.txt'
+            file_weights = open(weights_FILE_ADDR, 'w')
+            print(normalized_distance_weights, file=file_weights)
+            print(torch.sum(normalized_distance_weights), file=file_weights)
+            file_weights.close()
+                
+            out = torch_scatter.scatter_mean(normalized_distance_weights * out, batch_id, dim=0)
             print('SUCCESS, THIS CODE RAN SO YOU CAN IMPLEMENT DISTANCE')
+            
+            
             quit()
         
         print('finalized the out inside CDDModel forward')

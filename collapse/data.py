@@ -145,6 +145,7 @@ class BaseTransform:
         :return: `torch_geometric.data.Data` structure graph
         '''
         with torch.no_grad():
+            #df = df.dropna(subset=['x', 'y', 'z'])
             coords = torch.as_tensor(df[['x', 'y', 'z']].to_numpy(),
                                      dtype=torch.float32, device=self.device)
             
@@ -171,7 +172,9 @@ class BaseTransform:
 
             data.__setitem__('dist_to_ctr', dist_to_center)
             data.__setitem__('node_index', pt_idx)
-               
+            
+           
+             
             return data
 
 """
@@ -323,58 +326,24 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
     df = df.reset_index()
     kd_tree = scipy.spatial.cKDTree(df[['x', 'y', 'z']].to_numpy())
 
-    # all nodes within the env_radius are extracted (not necessarily sorted)
-    pt_idx = kd_tree.query_ball_point(center, r=env_radius, p=2.0)
+    indices = kd_tree.query_ball_point(center, env_radius)
+    df_env = df.loc[indices]
+    df_env['distance_to_center'] = np.linalg.norm(df_env[['x', 'y', 'z']] - center, axis=1)
     
-    
-    # df_env only has the points in 10 angst radius. It also has x,y,z, coordinates, resnames,
-    df_env = df.iloc[pt_idx, :]
-    
-    ## sanity check, should be deleted
-    inds = list(df_env.iloc[:, 0])
-    if len(inds) > 0:
-        if all(inds[i] <= inds[i + 1] for i in range(len(inds) - 1)):
-            print("The df_env list is sorted inside extract_env_function.")
-        else:
-            #print("The df_env list is not sorted.")
-            df_env.sort_values(by='index', inplace=True)
-            inds = list(df_env.iloc[:, 0])
-            if all(inds[i] <= inds[i + 1] for i in range(len(inds) - 1)):
-                print("The df_env successfully got sorted.")
             
     
-    if len(df_env) == 0:
+    #if len(df_env) == 0:
+    if len(df_env) == 1:
         print('No environment found')
         # print(ch_resid)
         # print(df.head())
         # print(df_env.head())
         return None
     
-    
-    
-    # get distances to center for atoms in the environment
-    dists, distnodes = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)
-    
-    # re-sorting distances based on the node index
-    zipped_distlists = zip(dists, distnodes)
-    sorted_distlists = sorted(zipped_distlists, key=lambda x: x[1])
-    dists, distnodes = zip(*sorted_distlists)
-    
-    ## checking if the list nodes whose distances were calculated exactly match the list of nodes in the sorted df
-    if distnodes != list(df_env.iloc[:, 0]):
-        raise Exception("The nodes in the dataframe do not exactly match the nodes whose distances were calculated. This might be due to sorting")
-    else:
-        print('node lists match')
-   
-    
-    df_env['distance_to_center'] = dists
-    #print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
-    
-    
     graph = transform(df_env)
     
-    graph.dists = dists
-    graph.distnodes = distnodes
+    graph.pos = df_env[['x', 'y', 'z']]
+    graph.dists = df_env['distance_to_center']
     graph.center = center # experimental. curious what this will print
     graph.df_env = df_env # experimental. curious what this will print
     
@@ -384,30 +353,28 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
 def extract_env_from_coords(df, center, env_radius=10.0):
     df = df.reset_index()
     kd_tree = scipy.spatial.cKDTree(df[['x', 'y', 'z']].to_numpy())
-    pt_idx = kd_tree.query_ball_point(center, r=env_radius, p=2.0)
-    df_env = df.iloc[pt_idx, :]
+
+    indices = kd_tree.query_ball_point(center, env_radius)
+    df_env = df.loc[indices]
+    df_env['distance_to_center'] = np.linalg.norm(df_env[['x', 'y', 'z']] - center, axis=1)
     
-    if len(df_env) == 0:
+            
+    
+    #if len(df_env) == 0:
+    if len(df_env) == 1:
+        print('No environment found')
+        # print(ch_resid)
+        # print(df.head())
+        # print(df_env.head())
         return None
-    
-    # get distances to center for atoms in the environment
-    dists, distnodes = kd_tree.query(center, k=len(pt_idx), p=2.0, eps=1e-8, distance_upper_bound=np.inf)
-    
-    # re-sorting distances based on the node index
-    zipped_distlists = zip(dists, distnodes)
-    sorted_distlists = sorted(zipped_distlists, key=lambda x: x[1])
-    dists, distnodes = zip(*sorted_distlists)
-    
-    df_env['distance_to_center'] = dists
-    #print("df_env['distance_to_center']", df_env['distance_to_center'], '\n\n\n')
-    
     
     graph = transform(df_env)
     
-    graph.dists = dists
-    graph.distnodes = distnodes
+    graph.pos = df_env[['x', 'y', 'z']]
+    graph.dists = df_env['distance_to_center']
     graph.center = center # experimental. curious what this will print
     graph.df_env = df_env # experimental. curious what this will print
+    
     
     return graph
 
@@ -1174,9 +1141,9 @@ class NoneCollater:
         self.exclude_keys = exclude_keys
 
     def __call__(self, batch, filter_batch=True):
+        """
         FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/batchContent.txt'
         file = open(FILE_ADDR, 'w')
-        """
         for b in batch:
             for item in b:
                 #file.writelines(item)
@@ -1194,11 +1161,7 @@ class NoneCollater:
             batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None))]# if (item[0][0] is not None) & (item[0][1] is not None)]
             print('this condition has executed')
             
-            for b in batch:
-                for item in b:
-                    #file.writelines(item)
-                    print(item, file=file)
-            file.close()
+            
             
         
         try:

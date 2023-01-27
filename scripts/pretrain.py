@@ -165,21 +165,26 @@ def main():
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
             print('i is ', i, '\n')
             if i == 2:
+                print('quitting peacefully :)')
                 quit()
             
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
             #print('meta', meta, '\n')
             print('graph1.dists', graph1.dists, '\n')
-            print('graph1.distnodes', graph1.distnodes, '\n')
+            print('graph1.pos', graph1.pos, '\n')
             print('graph1.center', graph1.center, '\n')
-            print('graph1.df_env', graph1.df_env, '\n')
+            #print('graph1.df_env', graph1.df_env, '\n')
       
-            print('graph2.dists', graph2.dists[:10], '\n')
-            print('graph2.distnodes', graph2.distnodes[:10], '\n')
-            print('graph2.center', graph2.center[:10], '\n')
-            print('graph2.df_env', graph2.df_env, '\n')
+            print('graph2.dists', graph2.dists, '\n')
+            print('graph2.pos', graph2.pos, '\n')
+            print('graph2.center', graph2.center, '\n')
+            #print('graph2.df_env', graph2.df_env, '\n')
          
+            #print('checking if the center point is included')
+            #print('np.min(graph1.dists)', np.min(graph1.dists))
+            #print('np.min(graph2.dists)', np.min(graph2.dists))
+            
             
             
             cons = meta['conservation'].to(device)
@@ -218,7 +223,7 @@ def main():
                     }, f'../data/checkpoints/{args.run_name}.pt')
         # scheduler.step(val_loss)
 
-def train_cls(x, y):
+def train_cls(x, y): 
     mod = LogisticRegression(max_iter=100, solver="liblinear")
     scores = cross_val_score(mod, x, y, cv=4)
     return np.mean(scores)
