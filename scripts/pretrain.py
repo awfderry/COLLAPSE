@@ -159,17 +159,22 @@ def main():
     
     
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
+        print('epoch ', epoch)
         model.train()
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
+            
+            """
             print('i is ', i, '\n')
-            if i == 2:
+            if i == 8:
                 print('quitting peacefully :)')
                 quit()
+            """
             
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
+            """
             #print('meta', meta, '\n')
             print('graph1.dists', graph1.dists, '\n')
             print('graph1.pos', graph1.pos, '\n')
@@ -184,7 +189,7 @@ def main():
             #print('checking if the center point is included')
             #print('np.min(graph1.dists)', np.min(graph1.dists))
             #print('np.min(graph2.dists)', np.min(graph2.dists))
-            
+            """
             
             
             cons = meta['conservation'].to(device)

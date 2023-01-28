@@ -342,10 +342,12 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
     
     graph = transform(df_env)
     
+    """
     graph.pos = df_env[['x', 'y', 'z']]
     graph.dists = df_env['distance_to_center']
     graph.center = center # experimental. curious what this will print
     graph.df_env = df_env # experimental. curious what this will print
+    """
     
     
     return graph
@@ -370,11 +372,12 @@ def extract_env_from_coords(df, center, env_radius=10.0):
     
     graph = transform(df_env)
     
+    """
     graph.pos = df_env[['x', 'y', 'z']]
     graph.dists = df_env['distance_to_center']
     graph.center = center # experimental. curious what this will print
     graph.df_env = df_env # experimental. curious what this will print
-    
+    """
     
     return graph
 
@@ -1153,25 +1156,23 @@ class NoneCollater:
         
         try:
             elem = batch[0]
-            print('elem', elem)
+            #print('elem', elem)
         except IndexError:
             raise ValueError("Input batch is empty before processing")
         
         if filter_batch:
             batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None))]# if (item[0][0] is not None) & (item[0][1] is not None)]
-            print('this condition has executed')
+            #print('this condition has executed')
             
-            
-            
-        
+
         try:
             elem = batch[0]
         except IndexError:
             raise ValueError("Input batch is empty")
         
-        print('type(elem) is', type(elem))
+        #print('type(elem) is', type(elem))
         if isinstance(elem, BaseData):
-            print('from_data_list method got called')
+            #print('from_data_list method got called')
             return Batch.from_data_list(batch, self.follow_batch,
                                         self.exclude_keys)
         elif isinstance(elem, torch.Tensor):
@@ -1192,6 +1193,6 @@ class NoneCollater:
         raise TypeError(f'DataLoader found invalid type: {type(elem)}')
 
     def collate(self, batch):  # Deprecated...
-        print('batch before filtering in the depracated collate function')
-        print(batch)
+        #print('batch before filtering in the depracated collate function')
+        #print(batch)
         return self(batch)

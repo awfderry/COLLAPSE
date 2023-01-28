@@ -96,8 +96,9 @@ class CDDModel(nn.Module):
         #print('batch[0].dists', batch[0].dists)
         #print('batch[0].distnodes', batch[0].distnodes)
         
-        print('getting the members of the batch object\n')
+        #print('getting the members of the batch object\n')
         dictOfAttr = vars(batch)
+        torch.set_printoptions(threshold=999)
         
         """
         for key in dictOfAttr:
@@ -112,21 +113,22 @@ class CDDModel(nn.Module):
         
         if '_store' in dictOfAttr:
             if 'dist_to_ctr' in dictOfAttr['_store']:
-                print('finally has the desired distance attributes')
+                #print('finally has the desired distance attributes')
                 distances = batch._store['dist_to_ctr']
-                print("batch._store['dist_to_ctr']", distances)
-                print('shape of dist_to_ctr ', distances.shape)
+                #print("batch._store['dist_to_ctr']", distances)
+                #print('shape of dist_to_ctr ', distances.shape)
                 node_index = batch._store['node_index']
-                print("batch._store['node_index']", node_index)
-                print('shape of node_index ', node_index.shape)
-                print("mean distance ", torch.mean(distances))
-                print("min distance ", torch.min(distances))
-                print("max distance ", torch.max(distances))
-                print("median distance ", torch.median(distances))
-                self.scatter_mean = False
-                self.attn = False
-                self.distance_based = True
-                print('SUCCESS')
+                #print("batch._store['node_index']", node_index)
+                #print('shape of node_index ', node_index.shape)
+                #print("mean distance ", torch.mean(distances))
+                #print("min distance ", torch.min(distances))
+                #print("max distance ", torch.max(distances))
+                #print("median distance ", torch.median(distances))
+                if self.scatter_mean or self.attn:
+                    self.scatter_mean = False
+                    self.attn = False
+                    self.distance_based = True
+                #print('SUCCESS')
                 
                 
                 """
@@ -144,10 +146,20 @@ class CDDModel(nn.Module):
         
                 """
       
+                """
                 DISTS_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/dists.txt'
                 file_dists = open(DISTS_FILE_ADDR, 'w')
                 print(distances, file=file_dists)
                 file_dists.close()
+                
+                
+                DIMENSIONS_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/dimensions.txt'
+                file_dimensions = open(DIMENSIONS_FILE_ADDR, 'a')
+                print('distances dimensions\n', file=file_dimensions)
+                print(distances.shape, file=file_dimensions)
+                print('\n\n\n', file=file_dimensions)
+                file_dimensions.close()
+                """
         
         if self.scatter_mean and self.attn:
             raise Exception('only one of scatter_mean and attn can be used at once')
@@ -168,22 +180,32 @@ class CDDModel(nn.Module):
         
         out = self.W_out(h_V)
         
+        """
         print('batch_id\n', batch_id, '\n\n\n')
         print('out shape ', out.shape, '\n\n')
         print('out content\n', out, '\n\n')
+        """
         
         if no_pool:
             return out
 
         elif self.scatter_mean: 
-            print('self.scatter_mean is executed inside CDDModel forward')
+            #print('self.scatter_mean is executed inside CDDModel forward')
             out = torch_scatter.scatter_mean(out, batch_id, dim=0)
+            """
+            DIMENSIONS_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/dimensions.txt'
+            file_dimensions = open(DIMENSIONS_FILE_ADDR, 'a')
+            print('out (the correct one done for dummy_graph) dimensions\n',file = file_dimensions)
+            print(out.shape, file=file_dimensions)
+            print('\n\n\n', file=file_dimensions)
+            file_dimensions.close()
+            """
         elif self.attn: 
             attn = self.attn_nn(out).view(-1, 1)
             attn = softmax(attn, batch_id)
             out = torch_scatter.scatter_mean(attn * out, batch_id, dim=0)
         elif self.distance_based:
-            print('out.shape ', out.shape, '\n')
+            #print('out.shape ', out.shape, '\n')
             # the batch contains the graph
             # get the graph dists sum
             param_a = 2
@@ -197,7 +219,7 @@ class CDDModel(nn.Module):
            
             # normalize the transformed distance weights so they add up to 1
             # this is necessar
-            normalized_distance_weights = torch.tensor(dist_weight)
+            normalized_distance_weights = dist_weight.clone().detach()
             for i in range(dist_weight.shape[0]):
                 # get what batch the distance corresponds to
                 corresponding_batch = batch_id[i]
@@ -205,21 +227,52 @@ class CDDModel(nn.Module):
                 sud = batch_dist_weight_sums[corresponding_batch]
                 # divide by the some of distances
                 normalized_distance_weights[i] = dist_weight[i]/sud
+            # convert it from 1D to 2D to make dimensions compatible
+            normalized_distance_weights = normalized_distance_weights.view(-1,1)
            
+            """
+            DIMENSIONS_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/dimensions.txt'
+            file_dimensions = open(DIMENSIONS_FILE_ADDR, 'a')
+            print('normalized_distance_weights dimensions\n', file=file_dimensions)
+            print(normalized_distance_weights.shape, file=file_dimensions)
+            print('\n\n\n', file=file_dimensions)
+            print('out (after layers, before scatter mean) dimensions\n', file=file_dimensions)
+            print(out.shape, file=file_dimensions)
+            print('\n\n\n', file=file_dimensions)
+            print('batch_id dimensions\n', file=file_dimensions)
+            print(batch_id.shape, file=file_dimensions)
+            print('\n\n\n', file=file_dimensions)
+            print('normalized_distance_weights.T dimensions\n', file=file_dimensions)
+            print(normalized_distance_weights.T.shape, file=file_dimensions)
+            print('\n\n\n', file=file_dimensions)
+            file_dimensions.close()
+        
+        
             # sanity check for the new weights
             weights_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/weights.txt'
             file_weights = open(weights_FILE_ADDR, 'w')
             print(normalized_distance_weights, file=file_weights)
             print(torch.sum(normalized_distance_weights), file=file_weights)
             file_weights.close()
-                
-            out = torch_scatter.scatter_mean(normalized_distance_weights * out, batch_id, dim=0)
-            print('SUCCESS, THIS CODE RAN SO YOU CAN IMPLEMENT DISTANCE')
+            """
             
+            out_before_scatter = normalized_distance_weights * out
+            out = torch_scatter.scatter_mean(out_before_scatter, batch_id, dim=0)
+            #print('SUCCESS, THIS CODE RAN SO YOU CAN IMPLEMENT DISTANCE')
             
-            quit()
+            """
+            DIMENSIONS_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/dimensions.txt'
+            file_dimensions = open(DIMENSIONS_FILE_ADDR, 'a')
+            print('out (output of distance based weighting) dimensions\n', file=file_dimensions)
+            print(out.shape, file=file_dimensions)
+            print('\n\n\n', file=file_dimensions)
+            file_dimensions.close()
+            """
+            
         
-        print('finalized the out inside CDDModel forward')
+        #print('finalized the out inside CDDModel forward')
+        
+        
 
         return out
     

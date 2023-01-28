@@ -121,6 +121,7 @@ class NetWrapper(nn.Module):
     def _get_projector(self, hidden):
         _, dim = hidden.shape
         projector = MLP(dim, self.projection_size, self.projection_hidden_size)
+        print('_get_projector inside Netwrapper ran')
         return projector.to(hidden)
 
     def get_representation(self, x):
@@ -140,6 +141,7 @@ class NetWrapper(nn.Module):
 
     def forward(self, x, return_projection = True):
         representation = self.get_representation(x)
+        #print('netwrapper forward got called')
 
         if not return_projection:
             return representation, None
@@ -181,7 +183,10 @@ class BYOL(nn.Module):
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(dummy_graph, dummy_graph, 1)
+        # set running_dummy to be true because it doesn't have any notion of distance
+        #print('calling BYOLs forward()')
+        self.forward(dummy_graph, dummy_graph, 1, running_dummy=True)
+        
 
     @singleton('target_encoder')
     def _get_target_encoder(self):
@@ -202,28 +207,49 @@ class BYOL(nn.Module):
         self,
         graph1, graph2, loss_weight=1.0,
         return_embedding=False,
-        return_projection=True
+        return_projection=True,
+        running_dummy=False
     ):
         # assert not (self.training and x.shape[0] == 1), 'you must have greater than 1 sample when training, due to the batchnorm in the projection layer'
 
         if return_embedding:
             return self.online_encoder(graph1, return_projection=return_projection)[0], self.online_encoder(graph2, return_projection=return_projection)[0]
 
-        online_proj_one, _ = self.online_encoder(graph1, return_projection=return_projection)
-        online_proj_two, _ = self.online_encoder(graph2, return_projection=return_projection)
+        if running_dummy:
+            online_proj_one, _ = self.online_encoder(graph1, return_projection=return_projection)
+            online_proj_two, _ = self.online_encoder(graph2, return_projection=return_projection)
 
-        online_pred_one = self.online_predictor(online_proj_one)
-        online_pred_two = self.online_predictor(online_proj_two)
+            online_pred_one = self.online_predictor(online_proj_one)
+            online_pred_two = self.online_predictor(online_proj_two)
 
-        with torch.no_grad():
-            target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
-            target_proj_one, _ = target_encoder(graph1, return_projection=return_projection)
-            target_proj_two, _ = target_encoder(graph2, return_projection=return_projection)
-            target_proj_one.detach_()
-            target_proj_two.detach_()
+            with torch.no_grad():
+                target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
+                target_proj_one, _ = target_encoder(graph1, return_projection=return_projection)
+                target_proj_two, _ = target_encoder(graph2, return_projection=return_projection)
+                target_proj_one.detach_()
+                target_proj_two.detach_()
+
+            loss_one = loss_fn(online_pred_one, target_proj_two.detach())
+            loss_two = loss_fn(online_pred_two, target_proj_one.detach())
+
+            loss = (loss_one + loss_two) * loss_weight
         
-        loss_one = loss_fn(online_pred_one, target_proj_two.detach())
-        loss_two = loss_fn(online_pred_two, target_proj_one.detach())
+        else:
+            online_proj_one, _ = self.online_encoder(graph1, return_projection=return_projection)
+            online_proj_two, _ = self.online_encoder(graph2, return_projection=return_projection)
 
-        loss = (loss_one + loss_two) * loss_weight
+            online_pred_one = self.online_predictor(online_proj_one)
+            online_pred_two = self.online_predictor(online_proj_two)
+
+            with torch.no_grad():
+                target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
+                target_proj_one, _ = target_encoder(graph1, return_projection=return_projection)
+                target_proj_two, _ = target_encoder(graph2, return_projection=return_projection)
+                target_proj_one.detach_()
+                target_proj_two.detach_()
+
+            loss_one = loss_fn(online_pred_one, target_proj_two.detach())
+            loss_two = loss_fn(online_pred_two, target_proj_one.detach())
+
+            loss = (loss_one + loss_two) * loss_weight
         return loss.mean()
