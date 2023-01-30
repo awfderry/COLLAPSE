@@ -200,30 +200,58 @@ class BYOL(nn.Module):
 
     def forward(
         self,
-        graph1, graph2, loss_weight=1.0,
+        graph_anchor, graph_pos, graph_neg, loss_weight=1.0,
         return_embedding=False,
         return_projection=True
     ):
         # assert not (self.training and x.shape[0] == 1), 'you must have greater than 1 sample when training, due to the batchnorm in the projection layer'
 
         if return_embedding:
-            return self.online_encoder(graph1, return_projection=return_projection)[0], self.online_encoder(graph2, return_projection=return_projection)[0]
+            anc_emb = self.online_encoder(graph_anchor, return_projection=return_projection)[0]
+            pos_emb = self.online_encoder(graph_pos, return_projection=return_projection)[0]
+            neg_emb = self.online_encoder(graph_neg, return_projection=return_projection)[0]
+            return anc_emb, pos_emb, neg_emb
 
-        online_proj_one, _ = self.online_encoder(graph1, return_projection=return_projection)
-        online_proj_two, _ = self.online_encoder(graph2, return_projection=return_projection)
+        online_proj_anchor, _ = self.online_encoder(graph_anchor, return_projection=return_projection)
+        online_proj_pos, _ = self.online_encoder(graph_pos, return_projection=return_projection)
+        online_proj_neg, _ = self.online_encoder(graph_neg, return_projection=return_projection)
 
-        online_pred_one = self.online_predictor(online_proj_one)
-        online_pred_two = self.online_predictor(online_proj_two)
+        online_pred_anchor = self.online_predictor(online_proj_anchor)
+        online_pred_pos = self.online_predictor(online_proj_pos)
+        online_pred_neg = self.online_predictor(online_proj_neg)
 
-        with torch.no_grad():
+        with torch.no_gradf():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
-            target_proj_one, _ = target_encoder(graph1, return_projection=return_projection)
-            target_proj_two, _ = target_encoder(graph2, return_projection=return_projection)
-            target_proj_one.detach_()
-            target_proj_two.detach_()
+            target_proj_anchor, _ = target_encoder(graph_anchor, return_projection=return_projection)
+            target_proj_pos, _ = target_encoder(graph_pos, return_projection=return_projection)
+            target_proj_neg, _ = target_encoder(graph_neg, return_projection=return_projection)
+            target_proj_anchor.detach_()
+            target_proj_pos.detach_()
+            target_proj_neg.detach_()
         
-        loss_one = loss_fn(online_pred_one, target_proj_two.detach())
-        loss_two = loss_fn(online_pred_two, target_proj_one.detach())
-
-        loss = (loss_one + loss_two) * loss_weight
+        # if the embeddings are very different, dist value is high
+        dist_pos_1 = loss_fn(online_proj_anchor, target_proj_pos.detach())
+        dist_pos_2 = loss_fn(online_proj_pos, target_proj_anchor.detach())
+        dist_pos_combined = dist_pos_1 + dist_pos_2
+        
+        dist_neg_1 = loss_fn(online_proj_anchor, target_proj_neg.detach())
+        dist_neg_2 = loss_fn(online_proj_neg, target_proj_anchor.detach())
+        dist_neg_combined = dist_neg_1 + dist_neg_2
+        
+        # this is an arbitrary parameter to crank up the loss
+        LOSS_WEIGHT_MULTIPLIER_HPARAM = 3 
+        exp_param = LOSS_WEIGHT_MULTIPLIER_HPAM * loss_weight
+        
+        loss = torch.log(1 + torch.exp(exp_param * (dist_pos_combined - dist_neg_combined)))
+        
+        
+        LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/losses.txt'
+        file_losses = open(LOSSES_FILE_ADDR, 'a')
+        print('losses and distances\n', file=file_losses)
+        print('dist_pos_combined {}'.format(dist_pos_combined), file=file_losses)
+        print('dist_neg_combined {}'.format(dist_neg_combined), file=file_losses)
+        print('loss {}'.format(loss), file=file_losses)
+        print('\n\n\n', file=file_losses)
+        file_losses.close()
+        
         return loss.mean()

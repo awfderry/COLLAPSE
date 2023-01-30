@@ -63,20 +63,21 @@ def evaluate(loader, model, device):
     losses = []
     pos_cosine = []
     neg_cosine = []
-    for i, ((graph1, graph2), meta) in enumerate(loader):
-        graph1 = graph1.to(device)
-        graph2 = graph2.to(device)
+    for i, ((graph_anchor, graph_pos, graph_neg), meta) in enumerate(loader):
+        graph_anchor = graph_anchor.to(device)
+        graph_pos = graph_pos.to(device)
+        graph_neg = graph_neg.to(device)
         res1, res2 = meta['res_labels']
         cons = meta['conservation'].to(device)
-        loss = model(graph1, graph2, cons)
+        loss = model(graph_anchor, graph_pos, graph_neg, cons)
         losses.append(loss.item())
         
         # record std of embeddings (to check for collapsing solution)
-        embeddings = model(graph1, graph2, return_embedding=True, return_projection=False)
+        embeddings = model(graph_anchor, graph_pos, graph_neg, return_embedding=True, return_projection=False)
         
-        a, b = embeddings
+        a, b, c = embeddings
         pos_cosine.extend(F.cosine_similarity(a, b).tolist())
-        neg_cosine.extend(F.cosine_similarity(a, b[torch.randperm(b.size(0))]).tolist())
+        neg_cosine.extend(F.cosine_similarity(a, c).tolist())
         embeddings = torch.cat(embeddings).cpu().detach()
         
         cls_x.append(embeddings)
@@ -92,6 +93,14 @@ def evaluate(loader, model, device):
     return np.mean(losses), acc, std.mean(), np.mean(pos_cosine), np.mean(neg_cosine)
 
 def main():
+    
+    
+    LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/losses.txt'
+    
+    if os.path.exists(LOSSES_FILE_ADDR):
+        os.remove(LOSSES_FILE_ADDR)
+    
+    
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -141,15 +150,18 @@ def main():
         model.train()
         # print(f'EPOCH {epoch+1}:')
 
-        for i, ((graph1, graph2), meta) in enumerate(train_loader):
-            # if i == 5:
-            #     quit()
-            graph1 = graph1.to(device)
-            graph2 = graph2.to(device)
+        for i, ((graph_anchor, graph_pos, graph_neg), meta) in enumerate(train_loader):
+            if i == 1:
+                print('i =', i)
+                print('quitting peacefully')
+                quit()
+            graph_anchor = graph_anchor.to(device)
+            graph_pos = graph_pos.to(device)
+            graph_neg = graph_neg.to(device)
             cons = meta['conservation'].to(device)
             with torch.cuda.amp.autocast():
                 try:
-                    loss = model(graph1, graph2, loss_weight=cons, return_projection=True)
+                    loss = model(graph_anchor, graph_pos, graph_neg, loss_weight=cons, return_projection=True)
                 except RuntimeError as e:
                     if "CUDA out of memory" not in str(e): raise(e)
                     torch.cuda.empty_cache()

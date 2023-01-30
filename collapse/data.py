@@ -379,7 +379,7 @@ class CDDTransform(object):
 
         pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
         
-        pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
+        pos_pairs = msa.sample_position_triplicates(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
         graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
         # print('graphs', graphs_list)
         return graphs_list
@@ -1029,25 +1029,35 @@ class MSA(MultipleSeqAlignment):
         return r1, r2, seq_r1, seq_r2
 
     def sample_position_pairs(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
-        sample_pos = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
+        sample_pos_pos = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
+        # get the position of the sample negative
+        sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
+        # if this number is close to 0, the positions of the positive and negative sample are very
+        # close, making the learning harder. If it's close to 1, the positions are far apart.        
+        DIST_BETWEEN_POS_HPARAM = 0.5
+        sample_pos_neg = dist_between_pos*sample_pos_neg + (1-dist_between_pos) * sample_pos_pos
         # print(sample_pos)
         # print(self.full_msa.get_alignment_length())
         # print(type(int(sample_pos[0])))
         if num_pairs == 1:
-            sample_pos = int(sample_pos[0])
-            cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos]) + 1)
-            pos1 = self.align_pos_to_seq_pos(sample_pos, seq_r1)
-            pos2 = self.align_pos_to_seq_pos(sample_pos, seq_r2)
-            return pos1, pos2, cons
+            sample_pos_pos = int(sample_pos_pos[0])
+            sample_pos_neg = int(sample_pos_neg[0])
+            cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos_pos]) + 1)
+            pos_anchor = self.align_pos_to_seq_pos(sample_pos_pos, seq_r1)
+            pos_positive = self.align_pos_to_seq_pos(sample_pos_pos, seq_r2)
+            pos_negative = self.align_pos_to_seq_pos(sample_pos_neg, seq_r1)
+            return pos_anchor, pos_positive, pos_negative, cons
         else:
             pos_pairs = []
-            for pos in sample_pos:
-                pos = int(pos)
-                cons = 1 / (self.calculate_entropy(self.full_msa[:, pos]) + 1)
+            for posInd in range(len(sample_pos_pos)):
+                pos_pos = int(sample_pos_pos[posInd])
+                pos_neg = int(sample_pos_neg[posInd])
+                cons = 1 / (self.calculate_entropy(self.full_msa[:, pos_pos]) + 1)
                 # print(cons)
-                pos1 = self.align_pos_to_seq_pos(pos, seq_r1)
-                pos2 = self.align_pos_to_seq_pos(pos, seq_r2)
-                pos_pairs.append((pos1, pos2, cons))
+                pos_anchor = self.align_pos_to_seq_pos(pos_pos, seq_r1)
+                pos_positive = self.align_pos_to_seq_pos(pos_pos, seq_r2)
+                pos_negative = self.align_pos_to_seq_pos(pos_neg, seq_r1)
+                pos_pairs.append((pos_anchor, pos_positive, pos_positive, cons))
             return pos_pairs
         
     def align_pos_to_seq_pos(self, pos, record):
