@@ -167,10 +167,10 @@ def main():
             
             """
             print('i is ', i, '\n')
-            if i == 8:
-                print('quitting peacefully :)')
-                quit()
-            """
+            if i == 2:
+                break
+            """    
+            
             
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
@@ -221,12 +221,23 @@ def main():
                         'epoch': epoch
                         }, f'../data/checkpoints/{args.run_name}.pt')
         else:
+            """
             torch.save({'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': opt.state_dict(),
                     # 'scheduler_state_dict': scheduler.state_dict(),
                     'epoch': epoch
                     }, f'../data/checkpoints/{args.run_name}.pt')
+            """
+            print('current directory', os.getcwd()) 
+            torch.save({'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': opt.state_dict(),
+                    # 'scheduler_state_dict': scheduler.state_dict(),
+                    'epoch': epoch
+                    }, f'/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/data/checkpoints/{args.run_name}.pt')
         # scheduler.step(val_loss)
+        
+        #print('quitting peacefully :)')
+        #quit()
 
 def train_cls(x, y): 
     mod = LogisticRegression(max_iter=100, solver="liblinear")
