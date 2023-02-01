@@ -366,8 +366,8 @@ class CDDTransform(object):
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
-        msa = elem['msa']
-        """
+        #msa = elem['msa']
+        
         # alternative way of reading msa
         with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
             try:
@@ -375,7 +375,7 @@ class CDDTransform(object):
             except:
                 print(cdd_id)
                 return [((None, None), None)]
-        """
+        
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
@@ -388,27 +388,40 @@ class CDDTransform(object):
 
         pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
         
-        pos_pairs = msa.sample_position_triplicates(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
-        graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
+       
+        
+        
+        pos_triplicates = msa.sample_position_triplicates(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
+        graphs_list = [self._process_graphs(*triplicate, df1, df2, pair_ids, pair_resids) for triplicate in pos_triplicates]
         # print('graphs', graphs_list)
         return graphs_list
     
-    def _process_graphs(self, pos1, pos2, cons, df1, df2, pair_ids, pair_resids):
-        resid1, resid2 = pair_resids[0][pos1], pair_resids[1][pos2]
+    def _process_graphs(self, posAnc, posPos, posNeg, cons, df1, df2, pair_ids, pair_resids):
+         
+        PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/pairResids.txt'
+        file_pair_resid = open(PAIR_RESID_FILE_ADDR, 'a')
+        print('pair_resids array is {}\n'.format(pair_resids), file=file_pair_resid)
+        print('posAnc {}, posPos {}, posNeg {}\n'.format(posAnc, posPos, posNeg), file=file_pair_resid)
+        print('len(pair_resids[0]) is {}, len(pair_resids[1]) is {}'.format(len(pair_resids[0]),len(pair_resids[1])), file=file_pair_resid)
+        file_pair_resid.close()
+        
+        residAnc, residPos, residNeg = pair_resids[0][posAnc], pair_resids[1][posPos], pair_resids[0][posNeg]
+       
         chain1, chain2 = pair_ids[0][-1], pair_ids[1][-1]
         
-        graph1 = extract_env_from_resid(df1.copy(), (chain1, resid1), self.env_radius, train_mode=True)
-        graph2 = extract_env_from_resid(df2.copy(), (chain2, resid2), self.env_radius, train_mode=True)
+        graphAnc = extract_env_from_resid(df1.copy(), (chain1, residAnc), self.env_radius, train_mode=True)
+        graphPos = extract_env_from_resid(df2.copy(), (chain2, residPos), self.env_radius, train_mode=True)
+        graphNeg = extract_env_from_resid(df1.copy(), (chain1, residNeg), self.env_radius, train_mode=True)
         
         metadata = {
-            'res_labels': (atom_info.aa_to_label(resid1[0]), atom_info.aa_to_label(resid2[0])),
-            'res_ids': (resid1, resid2),
+            'res_labels': (atom_info.aa_to_label(residAnc[0]), atom_info.aa_to_label(residPos[0]), atom_info.aa_to_label(residNeg[0])),
+            'res_ids': (residAnc, residPos, residNeg),
             'pdb_ids': pair_ids,
             # 'cdd_id': cdd_id,
             'conservation': cons
         }
         
-        return (graph1, graph2), metadata
+        return (graphAnc, graphPos, graphNeg), metadata
     
     def _process_dataframes(self, atoms, pair):
         id1, id2 = pair
@@ -425,7 +438,6 @@ class CDDTransform(object):
             df2['same_chain'] = (df2['chain'] == id2_chain).astype(int)
 
         return df1, df2
-
 
 class EmbedTransform(object):
     '''
@@ -1042,13 +1054,15 @@ class MSA(MultipleSeqAlignment):
         res_to_match = seq[sample_pos_pos]
         RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/sampledResids.txt'
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
+        print('sequence of r1 is {}\n'.format(seq), file=file_res_sample)
         print('residue to match from the position {} in r1 is {}\n'.format(sample_pos_pos, res_to_match), file=file_res_sample)
         file_res_sample.close()
         
-        matchingResids = np.where(seq == res_to_match)
+        matchingResids = np.array(np.where(seq == res_to_match)).reshape(-1,)
             
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
         print('Here are the r1 seq positions where the same residue occurs {}\n'.format(matchingResids), file=file_res_sample)
+        print('len(matchingResids) {} -- matchingResids.shape {}\n'.format(len(matchingResids), matchingResids.shape), file=file_res_sample)
         file_res_sample.close()
 
         # if there's no matching residue, randomly pick
@@ -1058,7 +1072,9 @@ class MSA(MultipleSeqAlignment):
         # if there are other matching residues, pick amongs them randomly
         elif len(matchingResids) > 1:
             # make sure you don't pick the same residue
-            matchingResids = np.delete(matchingResids, sample_pos_pos)
+            matchingResids = np.delete(matchingResids, np.where(matchingResids==sample_pos_pos))
+            if len(matchingResids) < 1:
+                raise Exception('The delete function malfunctioned and deleted too many things. Matching array is empty.')
             sample_pos_neg = np.random.choice(matchingResids, size=1)
         
         else:
@@ -1079,12 +1095,13 @@ class MSA(MultipleSeqAlignment):
         # for all triplicates
         
         
+        """
         RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/sampledResids.txt'
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
         print('sequence of r1 is {}\n'.format(seq), file=file_res_sample)
-        print('seq_r1 parameter is {} \n'.format(seq_r1), file=file_res_sample)
         file_res_sample.close()
-        
+        """
+       
         """
         for i in range(num_pairs):
             # get the residue id
@@ -1157,7 +1174,7 @@ class MSA(MultipleSeqAlignment):
                 pos_anchor = self.align_pos_to_seq_pos(pos_pos, seq_r1)
                 pos_positive = self.align_pos_to_seq_pos(pos_pos, seq_r2)
                 pos_negative = self.align_pos_to_seq_pos(pos_neg, seq_r1)
-                pos_pairs.append((pos_anchor, pos_positive, pos_positive, cons))
+                pos_pairs.append((pos_anchor, pos_positive, pos_negative, cons))
             return pos_pairs
         
     def align_pos_to_seq_pos(self, pos, record):

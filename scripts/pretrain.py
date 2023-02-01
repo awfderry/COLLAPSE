@@ -74,6 +74,8 @@ def evaluate(loader, model, device):
         
         # record std of embeddings (to check for collapsing solution)
         embeddings = model(graph_anchor, graph_pos, graph_neg, return_embedding=True, return_projection=False)
+        # getting rid of NaNs
+        embeddings = embeddings[~torch.any(embeddings.isnan(),dim=1)]
         
         a, b, c = embeddings
         pos_cosine.extend(F.cosine_similarity(a, b).tolist())
@@ -104,6 +106,11 @@ def main():
     
     if os.path.exists(RES_SAMPLE_FILE_ADDR):
         os.remove(RES_SAMPLE_FILE_ADDR)
+        
+    PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/pairResids.txt'
+    
+    if os.path.exists(PAIR_RESID_FILE_ADDR):
+        os.remove(PAIR_RESID_FILE_ADDR)
     
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
