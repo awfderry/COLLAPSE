@@ -417,13 +417,17 @@ class CDDTransform(object):
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
-        #msa = elem['msa']
+        msa = elem['msa']
+        """
+        the slower way from reading the disk
         with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
             try:
                 msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
             except:
                 print(cdd_id)
                 return [((None, None), None)]
+        """
+        
         
         """
         print('msa', msa)

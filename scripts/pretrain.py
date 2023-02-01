@@ -17,7 +17,7 @@ import os
 import argparse
 import datetime
 from tqdm import tqdm
-#import wandb
+import wandb
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -73,8 +73,11 @@ def evaluate(loader, model, device):
         
         # record std of embeddings (to check for collapsing solution)
         embeddings = model(graph1, graph2, return_embedding=True, return_projection=False)
+        # getting rid of NaNs
+        embeddings = embeddings[~torch.any(embeddings.isnan(),dim=1)]
         
         a, b = embeddings
+        
         pos_cosine.extend(F.cosine_similarity(a, b).tolist())
         neg_cosine.extend(F.cosine_similarity(a, b[torch.randperm(b.size(0))]).tolist())
         embeddings = torch.cat(embeddings).cpu().detach()
@@ -95,7 +98,7 @@ def main():
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    #wandb.init(project="collapse", name=args.run_name, config=vars(args))
+    wandb.init(project="collapse", name=args.run_name, config=vars(args))
     
     train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
@@ -155,7 +158,7 @@ def main():
     """
     
     
-    #wandb.watch(model)
+    wandb.watch(model)
     
     
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
@@ -207,11 +210,11 @@ def main():
             opt.step()
             if not args.tied_weights:
                 model.update_moving_average(epoch) # update moving average of target encoder
-            #wandb.log({'loss': loss.item()})
+            wandb.log({'loss': loss.item()})
             # print(f'Iteration {i}: Loss: {loss.item()}')
         
         val_loss, acc, std, pos_cosine, neg_cosine = evaluate(val_loader, model, device)
-        #wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
+        wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
         
         # save your improved network
         if args.parallel:
