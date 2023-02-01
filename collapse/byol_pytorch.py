@@ -45,6 +45,7 @@ def loss_fn(x, y):
     y = F.normalize(y, dim=-1, p=2)
     return 2 - 2 * (x * y).sum(dim=-1)
 
+        
 
 # exponential moving average
 
@@ -181,7 +182,7 @@ class BYOL(nn.Module):
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(dummy_graph, dummy_graph, 1)
+        self.forward(dummy_graph, dummy_graph, dummy_graph, 1)
 
     @singleton('target_encoder')
     def _get_target_encoder(self):
@@ -220,7 +221,7 @@ class BYOL(nn.Module):
         online_pred_pos = self.online_predictor(online_proj_pos)
         online_pred_neg = self.online_predictor(online_proj_neg)
 
-        with torch.no_gradf():
+        with torch.no_grad():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
             target_proj_anchor, _ = target_encoder(graph_anchor, return_projection=return_projection)
             target_proj_pos, _ = target_encoder(graph_pos, return_projection=return_projection)
@@ -239,10 +240,12 @@ class BYOL(nn.Module):
         dist_neg_combined = dist_neg_1 + dist_neg_2
         
         # this is an arbitrary parameter to crank up the loss
+        """
         LOSS_WEIGHT_MULTIPLIER_HPARAM = 3 
-        exp_param = LOSS_WEIGHT_MULTIPLIER_HPAM * loss_weight
-        
+        exp_param = LOSS_WEIGHT_MULTIPLIER_HPARAM * loss_weight
         loss = torch.log(1 + torch.exp(exp_param * (dist_pos_combined - dist_neg_combined)))
+        """
+        loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
         
         
         LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/losses.txt'

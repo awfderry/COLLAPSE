@@ -367,6 +367,15 @@ class CDDTransform(object):
         cdd_id = elem['id'] 
         
         msa = elem['msa']
+        """
+        # alternative way of reading msa
+        with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
+            try:
+                msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
+            except:
+                print(cdd_id)
+                return [((None, None), None)]
+        """
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
@@ -1028,20 +1037,111 @@ class MSA(MultipleSeqAlignment):
             r2 = [r for r in self._records if seq_r2.id.split('_')[0].upper() in r.id][0]
         return r1, r2, seq_r1, seq_r2
 
-    def sample_position_pairs(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
-        sample_pos_pos = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
+    def sample_negative_example(self, seq, sample_pos_pos, r1, r2, seq_r1, seq_r2):
+        
+        res_to_match = seq[sample_pos_pos]
+        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/sampledResids.txt'
+        file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
+        print('residue to match from the position {} in r1 is {}\n'.format(sample_pos_pos, res_to_match), file=file_res_sample)
+        file_res_sample.close()
+        
+        matchingResids = np.where(seq == res_to_match)
+            
+        file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
+        print('Here are the r1 seq positions where the same residue occurs {}\n'.format(matchingResids), file=file_res_sample)
+        file_res_sample.close()
+
+        # if there's no matching residue, randomly pick
+        if len(matchingResids) == 1:
+            sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
+
+        # if there are other matching residues, pick amongs them randomly
+        elif len(matchingResids) > 1:
+            # make sure you don't pick the same residue
+            matchingResids = np.delete(matchingResids, sample_pos_pos)
+            sample_pos_neg = np.random.choice(matchingResids, size=1)
+        
+        else:
+            raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')
+
+        file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
+        print('Here is the sampled negative pos {}\n'.format(sample_pos_neg), file=file_res_sample)
+        file_res_sample.close()
+        
+        return sample_pos_neg
+    
+    def sample_position_triplicates(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
+        aligned_positions = self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2)
+        conservations = self.get_conservation(self.full_msa)[aligned_positions]
+        norm_conservations = conservations/np.sum(conservations)
+        sample_pos_pos = np.random.choice(aligned_positions, p = norm_conservations, size=num_pairs, replace=False)
+        seq = np.array(r1.seq)
+        # for all triplicates
+        
+        
+        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/sampledResids.txt'
+        file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
+        print('sequence of r1 is {}\n'.format(seq), file=file_res_sample)
+        print('seq_r1 parameter is {} \n'.format(seq_r1), file=file_res_sample)
+        file_res_sample.close()
+        
+        """
+        for i in range(num_pairs):
+            # get the residue id
+            sample_pos_pos = int(sample_pos_pos[0])
+            res_to_match = seq[sample_pos_pos]
+            
+            file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
+            print('residue to match from the position {} in r1 is {}\n'.format(sample_pos_pos, res_to_match), file=file_res_sample)
+            file_res_sample.close()
+            
+            # find all indices where the same residue is present
+            
+            matchingResids = np.where(seq == res_to_match)
+            
+            file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
+            print('Here are the r1 seq positions where the same residue occurs {}\n'.format(matchingResids), file=file_res_sample)
+            file_res_sample.close()
+            
+            # if there's no matching residue, randomly pick
+            if len(matchingResids) == 1:
+                sample_pos_neg_i = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
+            
+            # if there are other matching residues, pick amongs them randomly
+            elif len(matchingResids) > 1:
+                # make sure you don't pick the same residue
+                matchingResids = np.delete(matchingResids, sample_pos_pos)
+                sample_pos_neg_i = np.random.choice(matchingResids, size=1)
+               
+            else:
+                raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')
+            
+            file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
+            print('Here is the sampled negative pos {}\n'.format(sample_pos_neg_i), file=file_res_sample)
+            file_res_sample.close()
+            
+            sample_pos_neg[i] = sample_pos_neg_i
+                
+          """  
+            
+            
+        """
         # get the position of the sample negative
         sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
+        """
+       
+        
         # if this number is close to 0, the positions of the positive and negative sample are very
         # close, making the learning harder. If it's close to 1, the positions are far apart.        
-        DIST_BETWEEN_POS_HPARAM = 0.5
-        sample_pos_neg = dist_between_pos*sample_pos_neg + (1-dist_between_pos) * sample_pos_pos
+        #DIST_BETWEEN_POS_HPARAM = 0.5
+        #sample_pos_neg = DIST_BETWEEN_POS_HPARAM*sample_pos_neg + (1-DIST_BETWEEN_POS_HPARAM) * sample_pos_pos
+        
         # print(sample_pos)
         # print(self.full_msa.get_alignment_length())
         # print(type(int(sample_pos[0])))
         if num_pairs == 1:
             sample_pos_pos = int(sample_pos_pos[0])
-            sample_pos_neg = int(sample_pos_neg[0])
+            sample_pos_neg = int(self.sample_negative_example(seq, sample_pos_pos, r1, r2, seq_r1, seq_r2))
             cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos_pos]) + 1)
             pos_anchor = self.align_pos_to_seq_pos(sample_pos_pos, seq_r1)
             pos_positive = self.align_pos_to_seq_pos(sample_pos_pos, seq_r2)
@@ -1051,7 +1151,7 @@ class MSA(MultipleSeqAlignment):
             pos_pairs = []
             for posInd in range(len(sample_pos_pos)):
                 pos_pos = int(sample_pos_pos[posInd])
-                pos_neg = int(sample_pos_neg[posInd])
+                pos_neg = int(self.sample_negative_example(seq, pos_pos, r1, r2, seq_r1, seq_r2))
                 cons = 1 / (self.calculate_entropy(self.full_msa[:, pos_pos]) + 1)
                 # print(cons)
                 pos_anchor = self.align_pos_to_seq_pos(pos_pos, seq_r1)

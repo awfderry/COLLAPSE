@@ -17,7 +17,7 @@ import os
 import argparse
 import datetime
 from tqdm import tqdm
-import wandb
+#import wandb
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -100,11 +100,15 @@ def main():
     if os.path.exists(LOSSES_FILE_ADDR):
         os.remove(LOSSES_FILE_ADDR)
     
+    RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/sampledResids.txt'
+    
+    if os.path.exists(RES_SAMPLE_FILE_ADDR):
+        os.remove(RES_SAMPLE_FILE_ADDR)
     
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    wandb.init(project="collapse", name=args.run_name, config=vars(args))
+    #wandb.init(project="collapse", name=args.run_name, config=vars(args))
     
     train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
     val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
@@ -144,7 +148,7 @@ def main():
           
     model.train()
     
-    wandb.watch(model)
+    #wandb.watch(model)
     
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         model.train()
@@ -173,11 +177,11 @@ def main():
             opt.step()
             if not args.tied_weights:
                 model.update_moving_average(epoch) # update moving average of target encoder
-            wandb.log({'loss': loss.item()})
+            #wandb.log({'loss': loss.item()})
             # print(f'Iteration {i}: Loss: {loss.item()}')
         
         val_loss, acc, std, pos_cosine, neg_cosine = evaluate(val_loader, model, device)
-        wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
+        #wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
         
         # save your improved network
         if args.parallel:
