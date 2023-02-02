@@ -246,9 +246,10 @@ class BYOL(nn.Module):
         loss = torch.log(1 + torch.exp(exp_param * (dist_pos_combined - dist_neg_combined)))
         """
         loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
+        loss = torch.clamp(loss, min=-0.5, max=10)
         
         
-        LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/losses.txt'
+        LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/losses.txt'
         file_losses = open(LOSSES_FILE_ADDR, 'a')
         print('losses and distances\n', file=file_losses)
         print('dist_pos_combined {}'.format(dist_pos_combined), file=file_losses)

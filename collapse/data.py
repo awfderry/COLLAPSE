@@ -398,7 +398,7 @@ class CDDTransform(object):
     
     def _process_graphs(self, posAnc, posPos, posNeg, cons, df1, df2, pair_ids, pair_resids):
          
-        PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/pairResids.txt'
+        PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/pairResids.txt'
         file_pair_resid = open(PAIR_RESID_FILE_ADDR, 'a')
         print('pair_resids array is {}\n'.format(pair_resids), file=file_pair_resid)
         print('posAnc {}, posPos {}, posNeg {}\n'.format(posAnc, posPos, posNeg), file=file_pair_resid)
@@ -1052,7 +1052,7 @@ class MSA(MultipleSeqAlignment):
     def sample_negative_example(self, seq, sample_pos_pos, r1, r2, seq_r1, seq_r2):
         
         res_to_match = seq[sample_pos_pos]
-        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/sampledResids.txt'
+        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/sampledResids.txt'
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
         print('sequence of r1 is {}\n'.format(seq), file=file_res_sample)
         print('residue to match from the position {} in r1 is {}\n'.format(sample_pos_pos, res_to_match), file=file_res_sample)
@@ -1096,7 +1096,7 @@ class MSA(MultipleSeqAlignment):
         
         
         """
-        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/sampledResids.txt'
+        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/sampledResids.txt'
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
         print('sequence of r1 is {}\n'.format(seq), file=file_res_sample)
         file_res_sample.close()
@@ -1204,8 +1204,10 @@ class NoneCollater:
         self.exclude_keys = exclude_keys
 
     def __call__(self, batch, filter_batch=True):
+        breakpoint()
         if filter_batch:
-            batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None))]# if (item[0][0] is not None) & (item[0][1] is not None)]
+            #batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None))]# if (item[0][0] is not None) & (item[0][1] is not None)]
+            batch = [item for b in batch for item in b if ((len(item)==3) and (item[0][0] is not None) and (item[0][1] is not None) and (item[0][2] is not None))]
         elem = batch[0]
         if isinstance(elem, BaseData):
             return Batch.from_data_list(batch, self.follow_batch,

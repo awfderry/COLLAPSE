@@ -74,10 +74,13 @@ def evaluate(loader, model, device):
         
         # record std of embeddings (to check for collapsing solution)
         embeddings = model(graph_anchor, graph_pos, graph_neg, return_embedding=True, return_projection=False)
-        # getting rid of NaNs
-        embeddings = embeddings[~torch.any(embeddings.isnan(),dim=1)]
         
         a, b, c = embeddings
+        # getting rid of NaNs
+        if torch.isnan(a).any() or torch.isnan(b).any() or torch.isnan(c).any():
+            continue
+        
+        
         pos_cosine.extend(F.cosine_similarity(a, b).tolist())
         neg_cosine.extend(F.cosine_similarity(a, c).tolist())
         embeddings = torch.cat(embeddings).cpu().detach()
@@ -97,17 +100,17 @@ def evaluate(loader, model, device):
 def main():
     
     
-    LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/losses.txt'
+    LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/losses.txt'
     
     if os.path.exists(LOSSES_FILE_ADDR):
         os.remove(LOSSES_FILE_ADDR)
     
-    RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/sampledResids.txt'
+    RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/sampledResids.txt'
     
     if os.path.exists(RES_SAMPLE_FILE_ADDR):
         os.remove(RES_SAMPLE_FILE_ADDR)
         
-    PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputContrPretrain/pairResids.txt'
+    PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/pairResids.txt'
     
     if os.path.exists(PAIR_RESID_FILE_ADDR):
         os.remove(PAIR_RESID_FILE_ADDR)
@@ -150,6 +153,7 @@ def main():
         train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
         val_loader = DataListLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
     else:
+        breakpoint()
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
           
