@@ -41,6 +41,7 @@ def set_requires_grad(model, val):
 # loss fn
 
 def loss_fn(x, y):
+    #breakpoint()
     x = F.normalize(x, dim=-1, p=2)
     y = F.normalize(y, dim=-1, p=2)
     return 2 - 2 * (x * y).sum(dim=-1)
@@ -247,6 +248,17 @@ class BYOL(nn.Module):
                 target_proj_two, _ = target_encoder(graph2, return_projection=return_projection)
                 target_proj_one.detach_()
                 target_proj_two.detach_()
+            
+            if torch.isnan(online_pred_one).any() or torch.isnan(target_proj_two).any():
+                print('online_pred_one {}\n'.format(online_pred_one))
+                print('target_proj_two {}\n'.format(target_proj_two))
+                raise Exception('NaN as the output of the encoder in BYOL')
+            elif torch.isnan(online_pred_two).any() or torch.isnan(target_proj_one).any():
+                print('online_pred_two {}\n'.format(online_pred_two))
+                print('target_proj_one {}\n'.format(target_proj_one))
+                raise Exception('NaN as the output of the encoder in BYOL')
+                
+                
 
             loss_one = loss_fn(online_pred_one, target_proj_two.detach())
             loss_two = loss_fn(online_pred_two, target_proj_one.detach())

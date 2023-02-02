@@ -180,6 +180,9 @@ class CDDModel(nn.Module):
         
         out = self.W_out(h_V)
         
+        ## make sure out does not explode
+        out = torch.clamp(out, min=-10, max=10)
+        
         """
         print('batch_id\n', batch_id, '\n\n\n')
         print('out shape ', out.shape, '\n\n')
@@ -212,8 +215,20 @@ class CDDModel(nn.Module):
             param_b = 0.05
             dist_weight = param_a - torch.exp(param_b * distances)
             
+            #### checking to make sure distance weights are not exploding
+            # elements less than zero
+            mask_lt_zero = (dist_weight < 0)
+            # elements greater than one
+            mask_gt_one = (dist_weight > 1)
+            # elements less than zero or greater than one
+            mask_lt_zero_or_gt_one = mask_lt_zero | mask_gt_one
+
+            # check if any elements are less than zero or greater than one
+            if torch.any(mask_lt_zero_or_gt_one):
+                print("There are values outside the range [0, 1]")
+                raise Exception('your distance weights are behaving unusually. Outside of range [0, 1]')
+            
             # get the sum of transformed distances weights per batch
-    
             
             batch_dist_weight_sums = torch_scatter.scatter_add(dist_weight, batch_id, dim=0)
            
@@ -227,6 +242,20 @@ class CDDModel(nn.Module):
                 sud = batch_dist_weight_sums[corresponding_batch]
                 # divide by the some of distances
                 normalized_distance_weights[i] = dist_weight[i]/sud
+            
+            #### checking to make sure distance weights are not exploding
+            # elements less than zero
+            mask_lt_zero = (dist_weight < 0)
+            # elements greater than one
+            mask_gt_one = (dist_weight > 1)
+            # elements less than zero or greater than one
+            mask_lt_zero_or_gt_one = mask_lt_zero | mask_gt_one
+
+            # check if any elements are less than zero or greater than one
+            if torch.any(mask_lt_zero_or_gt_one):
+                print("There are values outside the range [0, 1]")
+                raise Exception('your distance weights are behaving abnormally. Outside of range [0, 1]')
+            
             # convert it from 1D to 2D to make dimensions compatible
             normalized_distance_weights = normalized_distance_weights.view(-1,1)
            
@@ -258,6 +287,9 @@ class CDDModel(nn.Module):
             
             out_before_scatter = normalized_distance_weights * out
             out = torch_scatter.scatter_mean(out_before_scatter, batch_id, dim=0)
+            
+          
+            
             #print('SUCCESS, THIS CODE RAN SO YOU CAN IMPLEMENT DISTANCE')
             
             """

@@ -74,9 +74,11 @@ def evaluate(loader, model, device):
         # record std of embeddings (to check for collapsing solution)
         embeddings = model(graph1, graph2, return_embedding=True, return_projection=False)
         # getting rid of NaNs
-        embeddings = embeddings[~torch.any(embeddings.isnan(),dim=1)]
+        #embeddings = embeddings[~torch.any(embeddings.isnan(),dim=1)]
         
         a, b = embeddings
+        if torch.isnan(a).any() or torch.isnan(b).any():
+            continue
         
         pos_cosine.extend(F.cosine_similarity(a, b).tolist())
         neg_cosine.extend(F.cosine_similarity(a, b[torch.randperm(b.size(0))]).tolist())
