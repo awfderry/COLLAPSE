@@ -64,6 +64,8 @@ def evaluate(loader, model, device):
     pos_cosine = []
     neg_cosine = []
     for i, ((graph1, graph2), meta) in enumerate(loader):
+        if (graph1 == None) or (graph2 == None) or (meta == None):
+            continue
         graph1 = graph1.to(device)
         graph2 = graph2.to(device)
         res1, res2 = meta['res_labels']
@@ -169,6 +171,8 @@ def main():
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
+            if (graph1 == None) or (graph2 == None) or (meta == None):
+                continue
             
             """
             print('i is ', i, '\n')
