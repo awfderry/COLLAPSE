@@ -216,52 +216,38 @@ class BYOL(nn.Module):
         if return_embedding:
             return self.online_encoder(graph1, return_projection=return_projection)[0], self.online_encoder(graph2, return_projection=return_projection)[0]
 
-        if running_dummy:
-            online_proj_one, _ = self.online_encoder(graph1, return_projection=return_projection)
-            online_proj_two, _ = self.online_encoder(graph2, return_projection=return_projection)
+        online_proj_one, _ = self.online_encoder(graph1, return_projection=return_projection)
+        online_proj_two, _ = self.online_encoder(graph2, return_projection=return_projection)
 
-            online_pred_one = self.online_predictor(online_proj_one)
-            online_pred_two = self.online_predictor(online_proj_two)
-
-            with torch.no_grad():
-                target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
-                target_proj_one, _ = target_encoder(graph1, return_projection=return_projection)
-                target_proj_two, _ = target_encoder(graph2, return_projection=return_projection)
-                target_proj_one.detach_()
-                target_proj_two.detach_()
-
-            loss_one = loss_fn(online_pred_one, target_proj_two.detach())
-            loss_two = loss_fn(online_pred_two, target_proj_one.detach())
-
-            loss = (loss_one + loss_two) * loss_weight
+        if torch.isnan(online_proj_one).any() or torch.isnan(online_proj_two).any():
+            print('online_proj_one {}\n'.format(online_proj_one))
+            print('online_proj_two {}\n'.format(online_proj_two))
+            raise Exception('NaN as the output of the online proj encoder in BYOL')
         
-        else:
-            online_proj_one, _ = self.online_encoder(graph1, return_projection=return_projection)
-            online_proj_two, _ = self.online_encoder(graph2, return_projection=return_projection)
+        
+        online_pred_one = self.online_predictor(online_proj_one)
+        online_pred_two = self.online_predictor(online_proj_two)
 
-            online_pred_one = self.online_predictor(online_proj_one)
-            online_pred_two = self.online_predictor(online_proj_two)
+        with torch.no_grad():
+            target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
+            target_proj_one, _ = target_encoder(graph1, return_projection=return_projection)
+            target_proj_two, _ = target_encoder(graph2, return_projection=return_projection)
+            target_proj_one.detach_()
+            target_proj_two.detach_()
 
-            with torch.no_grad():
-                target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
-                target_proj_one, _ = target_encoder(graph1, return_projection=return_projection)
-                target_proj_two, _ = target_encoder(graph2, return_projection=return_projection)
-                target_proj_one.detach_()
-                target_proj_two.detach_()
-            
-            if torch.isnan(online_pred_one).any() or torch.isnan(target_proj_two).any():
-                print('online_pred_one {}\n'.format(online_pred_one))
-                print('target_proj_two {}\n'.format(target_proj_two))
-                raise Exception('NaN as the output of the encoder in BYOL')
-            elif torch.isnan(online_pred_two).any() or torch.isnan(target_proj_one).any():
-                print('online_pred_two {}\n'.format(online_pred_two))
-                print('target_proj_one {}\n'.format(target_proj_one))
-                raise Exception('NaN as the output of the encoder in BYOL')
-                
-                
+        if torch.isnan(online_pred_one).any() or torch.isnan(target_proj_two).any():
+            print('online_pred_one {}\n'.format(online_pred_one))
+            print('target_proj_two {}\n'.format(target_proj_two))
+            raise Exception('NaN as the output of the encoder in BYOL')
+        elif torch.isnan(online_pred_two).any() or torch.isnan(target_proj_one).any():
+            print('online_pred_two {}\n'.format(online_pred_two))
+            print('target_proj_one {}\n'.format(target_proj_one))
+            raise Exception('NaN as the output of the encoder in BYOL')
 
-            loss_one = loss_fn(online_pred_one, target_proj_two.detach())
-            loss_two = loss_fn(online_pred_two, target_proj_one.detach())
 
-            loss = (loss_one + loss_two) * loss_weight
+
+        loss_one = loss_fn(online_pred_one, target_proj_two.detach())
+        loss_two = loss_fn(online_pred_two, target_proj_one.detach())
+
+        loss = (loss_one + loss_two) * loss_weight
         return loss.mean()

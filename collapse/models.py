@@ -175,10 +175,19 @@ class CDDModel(nn.Module):
         
         
         for layer in self.layers:
+            for subtensor in h_V:
+                if torch.isnan(subtensor).any():
+                    print('h_V tensor w NaN inside CDDModel forward() \n{}'.format(h_V))
+                    raise Exception('There is NaN in h_V inside CDDModel forward before layer \n{}\n'.format(layer))
             h_V = layer(h_V, batch.edge_index, h_E)
+            #breakpoint()
 
         
         out = self.W_out(h_V)
+        
+        if torch.isnan(out.any()):
+            print('out tensor inside CDDModel forward() {}\n'.format(out))
+            raise Exception('NaN as the output of GNN layers')
         
         ## make sure out does not explode
         out = torch.clamp(out, min=-10, max=10)

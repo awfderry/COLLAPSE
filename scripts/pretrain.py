@@ -172,8 +172,8 @@ def main():
             
             """
             print('i is ', i, '\n')
-            if i == 2:
-                break
+            if i == 3:
+                quit()
             """    
             
             

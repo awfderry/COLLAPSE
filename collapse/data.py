@@ -407,27 +407,58 @@ class CDDTransform(object):
         self.device = device
         self.num_pairs_sampled = num_pairs_sampled
     
+    # this gets called in enumerate(loader) by atom3d/dataset/datasets.py line 117 __getitem__ self._transform(item)
+    # so item is elem here
     def __call__(self, elem):
         # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
-        #ELEM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/elemContent.txt'
-        #file_elem = open(ELEM_FILE_ADDR, 'w')
-        #print(elem, file=file_elem)
-        #file_elem.close()
+        ELEM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/elemContentNew.txt'
+        file_elem = open(ELEM_FILE_ADDR, 'w')
+        print(elem, file=file_elem)
+        file_elem.close()
         
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
-        #msa = elem['msa']
+        #breakpoint()
+        len_msa_seq_records = 0
         
-        #the slower way from reading the disk
-        with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
-            try:
-                msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
-            except:
-                print(cdd_id)
-                return [((None, None), None)]
+        if 'msa' in elem:
+            msa = elem['msa']
+            """
+            MSA_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/MSAContentNew.txt'
+            file_msa = open(MSA_FILE_ADDR, 'w')
+            print(msa, file=file_msa)
+            file_msa.close()
+            """
+            #breakpoint()
+            if hasattr(msa, 'pdb_seq_records'):
+                len_msa_seq_records = len(msa.pdb_seq_records)
+                """
+                file_msa = open(MSA_FILE_ADDR, 'w')
+                print('len_msa_seq_records is {}'.format(len_msa_seq_records), file=file_msa)
+                file_msa.close()
+                """
+        elif (not 'msa' in elem) or len_msa_seq_records == 0:
+            """
+            file_msa = open(MSA_FILE_ADDR, 'w')
+            print('len_msa_seq_records is {}'.format(len_msa_seq_records), file=file_msa)
+            file_msa.close()
+            """
+            with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
+                try:
+                    msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
+                    """
+                    MSA_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/MSAContentNew2.txt'
+                    file_msa = open(MSA_FILE_ADDR, 'w')
+                    print(msa, file=file_msa)
+                    file_msa.close()
+                    """
+                except:
+                    print(cdd_id)
+                    #raise Exception('MSA reading is not working well in the data.py file.')
+                    return [((None, None), None)]
         
-        
+        #breakpoint()
         
         """
         print('msa', msa)
@@ -448,7 +479,15 @@ class CDDTransform(object):
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
         df1, df2 = self._process_dataframes(elem['atoms'], pair_ids)
 
-        pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
+        #pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
+        # alternative way of writing the code above
+        pair_resids = []
+        for p in pair_ids:
+            if p in pdb_idx:
+                if pdb_idx[p] in elem['residue_ids']:
+                    pair_resids.append(elem['residue_ids'][pdb_idx[p]])
+               
+            
         
         pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
         graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
@@ -1168,11 +1207,13 @@ class NoneCollater:
             batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None))]# if (item[0][0] is not None) & (item[0][1] is not None)]
             #print('this condition has executed')
             
-
+        elem = batch[0]
+        """
         try:
             elem = batch[0]
         except IndexError:
             raise ValueError("Input batch is empty")
+        """
         
         #print('type(elem) is', type(elem))
         if isinstance(elem, BaseData):
