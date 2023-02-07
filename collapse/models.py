@@ -221,29 +221,24 @@ class CDDModel(nn.Module):
             # the batch contains the graph
             # get the graph dists sum
             param_a = 2
+            #param_a.requires_grad = False
             param_b = 0.05
-            dist_weight = param_a - torch.exp(param_b * distances)
+            #param_b.requires_grad = False
+            distances = torch.clamp(distances, min=-0.001, max=20)
+            distances.requires_grad = False
             
-            #### checking to make sure distance weights are not exploding
-            # elements less than zero
-            mask_lt_zero = (dist_weight < 0)
-            # elements greater than one
-            mask_gt_one = (dist_weight > 1)
-            # elements less than zero or greater than one
-            mask_lt_zero_or_gt_one = mask_lt_zero | mask_gt_one
+            dist_weight = torch.clamp(param_a - torch.exp(param_b * distances),
+                                      min = 0,
+                                      max = 1)
+            dist_weight.requires_grad = False
 
-            # check if any elements are less than zero or greater than one
-            if torch.any(mask_lt_zero_or_gt_one):
-                print("There are values outside the range [0, 1]")
-                raise Exception('your distance weights are behaving unusually. Outside of range [0, 1]')
-            
             # get the sum of transformed distances weights per batch
             
             batch_dist_weight_sums = torch_scatter.scatter_add(dist_weight, batch_id, dim=0)
            
             # normalize the transformed distance weights so they add up to 1
             # this is necessar
-            normalized_distance_weights = dist_weight.clone().detach()
+            normalized_distance_weights = dist_weight.clone().detach().requires_grad_(False)
             for i in range(dist_weight.shape[0]):
                 # get what batch the distance corresponds to
                 corresponding_batch = batch_id[i]
@@ -252,22 +247,14 @@ class CDDModel(nn.Module):
                 # divide by the some of distances
                 normalized_distance_weights[i] = dist_weight[i]/sud
             
-            #### checking to make sure distance weights are not exploding
-            # elements less than zero
-            mask_lt_zero = (dist_weight < 0)
-            # elements greater than one
-            mask_gt_one = (dist_weight > 1)
-            # elements less than zero or greater than one
-            mask_lt_zero_or_gt_one = mask_lt_zero | mask_gt_one
-
-            # check if any elements are less than zero or greater than one
-            if torch.any(mask_lt_zero_or_gt_one):
-                print("There are values outside the range [0, 1]")
-                raise Exception('your distance weights are behaving abnormally. Outside of range [0, 1]')
+            
+            normalized_distance_weights = torch.clamp(normalized_distance_weights, min=0, max=1)
+            
             
             # convert it from 1D to 2D to make dimensions compatible
             normalized_distance_weights = normalized_distance_weights.view(-1,1)
-           
+            normalized_distance_weights.requires_grad = False
+        
             """
             DIMENSIONS_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/COLLAPSE/outputPretrain/dimensions.txt'
             file_dimensions = open(DIMENSIONS_FILE_ADDR, 'a')

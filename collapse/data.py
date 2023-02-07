@@ -477,17 +477,14 @@ class CDDTransform(object):
             return [((None, None), None)]
         
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
+        
+        if (pair_ids[0] not in pdb_idx) or (pair_ids[1] not in pdb_idx):
+            # a pdb is not in atoms dataframe
+            return [((None, None), None)]
+        
         df1, df2 = self._process_dataframes(elem['atoms'], pair_ids)
 
-        #pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
-        # alternative way of writing the code above
-        pair_resids = []
-        for p in pair_ids:
-            if p in pdb_idx:
-                if pdb_idx[p] in elem['residue_ids']:
-                    pair_resids.append(elem['residue_ids'][pdb_idx[p]])
-               
-            
+        pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
         
         pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
         graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
