@@ -93,6 +93,14 @@ def evaluate(loader, model, device):
 
 def main():
     
+    ## print the arguments:
+    print("Option '--run_name': ", args.run_name)
+    print("Option '--val_dir': ", args.val_dir)
+    print("Option '--data_dir': ", args.data_dir)
+    print("Option '--checkpoint': ", args.checkpoint)
+    print("Option '--lr': ", args.lr)
+    print("Option '--env_radius': ", args.env_radius)
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     wandb.init(project="collapse", name=args.run_name, config=vars(args))
