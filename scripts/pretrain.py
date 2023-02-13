@@ -19,12 +19,12 @@ import datetime
 from tqdm import tqdm
 import wandb
 
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 parser = argparse.ArgumentParser(description='BYOL implementation for aligned protein environments')
-parser.add_argument('--val_dir', type=str, default='../data/datasets/pfam_pdb_balanced',
+parser.add_argument('--val_dir', type=str, default='/scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa',
                     help='location of dataset')
-parser.add_argument('--data_dir', type=str, default='/scratch/users/aderry/collapse/datasets/cdd_af2_dataset',
+parser.add_argument('--data_dir', type=str, default='/scratch/users/aderry/collapse/datasets/cdd_train_dataset',
                     help='location of dataset')
 parser.add_argument('--run_name', type=str, default=datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"), 
                     help='run name for logging')
@@ -36,7 +36,7 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=16, type=int,
                     help='mini-batch size')
-parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float,
+parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--dim', default=512, type=int, 
                     help='dimensionality of learned representations')
@@ -97,8 +97,8 @@ def main():
     
     wandb.init(project="collapse", name=args.run_name, config=vars(args))
     
-    train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
-    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
+    train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
+    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
     
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
     
@@ -113,7 +113,7 @@ def main():
     device_ids = [i for i in range(torch.cuda.device_count())]
 
     # opt = torch.optim.SGD(params=model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-    opt = torch.optim.Adam(params=model.parameters(), lr=args.lr)
+    opt = torch.optim.AdamW(params=model.parameters(), lr=args.lr, weight_decay=0.01)
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=10, verbose=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=5000, eta_min=1e-6)
 
@@ -130,20 +130,20 @@ def main():
         train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
         val_loader = DataListLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
     else:
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True, drop_last=True)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
           
     model.train()
     
-    wandb.watch(model)
+    # wandb.watch(model)
     
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         model.train()
         # print(f'EPOCH {epoch+1}:')
 
         for i, ((graph1, graph2), meta) in enumerate(train_loader):
-            # if i == 5:
-            #     quit()
+            # if i == 2:
+            #     break
             graph1 = graph1.to(device)
             graph2 = graph2.to(device)
             cons = meta['conservation'].to(device)

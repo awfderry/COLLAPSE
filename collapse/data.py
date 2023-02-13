@@ -30,7 +30,7 @@ import pathlib
 DATA_DIR = os.environ.get('DATA_DIR')
 if DATA_DIR is None:
     DATA_DIR = os.path.join(pathlib.Path(__file__).parent.resolve(), '../data')
-print(DATA_DIR)
+# print(DATA_DIR)
 # np.random.seed(2)
 
 """
@@ -354,7 +354,7 @@ class CDDTransform(object):
     Transforms LMDB dataset entries to featurized graphs. Returns a `torch_geometric.data.Data` graph
     '''
     
-    def __init__(self, env_radius=10.0, single_chain=False, include_af2=False, device='cpu', num_pairs_sampled=1):
+    def __init__(self, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', num_pairs_sampled=1):
         self.env_radius = env_radius
         self.single_chain = single_chain
         self.include_af2 = include_af2
@@ -364,27 +364,39 @@ class CDDTransform(object):
     def __call__(self, elem):
         # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
-        cdd_id = elem['id'] 
+        cdd_id = elem['id']
         
         msa = elem['msa']
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
         except Exception as e:
-            # print('failed for MSA', cdd_id)
+            print(e)
+            print('failed for MSA', cdd_id)
+            print(msa)
             return [((None, None), None)]
         
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
+
         df1, df2 = self._process_dataframes(elem['atoms'], pair_ids)
 
         pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
         
         pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
-        graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
+        
+        try:
+            graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
+        except:
+            print(cdd_id)
+            print(pair_ids)
+            print(pos_pairs)
+            print(pair_resids)
+            
         # print('graphs', graphs_list)
         return graphs_list
     
     def _process_graphs(self, pos1, pos2, cons, df1, df2, pair_ids, pair_resids):
+        
         resid1, resid2 = pair_resids[0][pos1], pair_resids[1][pos2]
         chain1, chain2 = pair_ids[0][-1], pair_ids[1][-1]
         
@@ -407,8 +419,8 @@ class CDDTransform(object):
         id2_id, id2_chain = id2.split('_')
 
         if self.single_chain:
-            df1 = atoms[(atoms['ensemble'].str.split('.').str[0] == id1_id) & (atoms['chain'] == id1_chain)]
-            df2 = atoms[(atoms['ensemble'].str.split('.').str[0] == id2_id) & (atoms['chain'] == id2_chain)]
+            df1 = atoms[(atoms['ensemble'].str.split('.').str[0].str.split('_').str[0] == id1_id) & (atoms['chain'] == id1_chain)]
+            df2 = atoms[(atoms['ensemble'].str.split('.').str[0].str.split('_').str[0] == id2_id) & (atoms['chain'] == id2_chain)]
         else:
             df1 = atoms[(atoms['ensemble'].str.split('.').str[0] == id1_id)]
             df1['same_chain'] = (df1['chain'] == id1_chain).astype(int)
@@ -1008,7 +1020,7 @@ class MSA(MultipleSeqAlignment):
         return np.nonzero(valid_positions)[0]
     
     def get_aligned_positions_pairwise(self, r1, r2, seq_r1, seq_r2):
-        valid_positions = [i for i in range(self.get_alignment_length()) if '-' not in r1[i] + r2[i] + seq_r1[i] + seq_r2[i]]
+        valid_positions = [i for i in range(self.get_alignment_length()) if np.all(np.isin([r1[i], r2[i], seq_r1[i], seq_r2[i]], atom_info.aa_abbr[:20]))]
         return valid_positions
     
     def sequence_identity(self, r1, r2):
@@ -1018,6 +1030,7 @@ class MSA(MultipleSeqAlignment):
     def sample_record_pair(self):
         seq_i1, seq_i2 = np.random.choice(range(len(self.pdb_seq_records)), size=2, replace=False)
         seq_r1, seq_r2 = self.pdb_seq_records[seq_i1], self.pdb_seq_records[seq_i2]
+
         if len(seq_r1.id.split('_')[0]) == 4:
             r1 = [r for r in self._records if seq_r1.id.split('_')[0].upper() + '|' + seq_r1.id.split('_')[1] in r.id][0]
         else:
@@ -1031,14 +1044,13 @@ class MSA(MultipleSeqAlignment):
     def sample_position_pairs(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
         sample_pos = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
         # print(sample_pos)
-        # print(self.full_msa.get_alignment_length())
-        # print(type(int(sample_pos[0])))
+        
         if num_pairs == 1:
             sample_pos = int(sample_pos[0])
             cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos]) + 1)
             pos1 = self.align_pos_to_seq_pos(sample_pos, seq_r1)
             pos2 = self.align_pos_to_seq_pos(sample_pos, seq_r2)
-            return pos1, pos2, cons
+            return [(pos1, pos2, cons)]
         else:
             pos_pairs = []
             for pos in sample_pos:
@@ -1055,7 +1067,7 @@ class MSA(MultipleSeqAlignment):
         for i, aa in enumerate(record):
             if i == pos:
                 break
-            if aa == '-':
+            if aa in ['-', 'X']:
                 gap_ct += 1
         return pos - gap_ct
   
