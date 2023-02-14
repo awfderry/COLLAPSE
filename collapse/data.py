@@ -391,6 +391,7 @@ class CDDTransform(object):
             print(pair_ids)
             print(pos_pairs)
             print(pair_resids)
+            graphs_list = []
             
         # print('graphs', graphs_list)
         return graphs_list
