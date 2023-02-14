@@ -1043,7 +1043,6 @@ class MSA(MultipleSeqAlignment):
 
     def sample_position_pairs(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
         sample_pos = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
-        # print(sample_pos)
         
         if num_pairs == 1:
             sample_pos = int(sample_pos[0])

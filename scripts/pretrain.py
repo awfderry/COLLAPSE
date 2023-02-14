@@ -2,8 +2,8 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from collapse.byol_pytorch import BYOL
-# from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+# from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score
 
 from collapse.models import CDDModel
@@ -113,7 +113,8 @@ def main():
     device_ids = [i for i in range(torch.cuda.device_count())]
 
     # opt = torch.optim.SGD(params=model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-    opt = torch.optim.AdamW(params=model.parameters(), lr=args.lr, weight_decay=0.01)
+    # opt = torch.optim.AdamW(params=model.parameters(), lr=args.lr, weight_decay=0.01)
+    opt = torch.optim.Adam(params=model.parameters(), lr=args.lr)
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=10, verbose=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=5000, eta_min=1e-6)
 
@@ -183,7 +184,8 @@ def main():
         # scheduler.step(val_loss)
 
 def train_cls(x, y):
-    mod = LogisticRegression(max_iter=100, solver="liblinear")
+    # mod = LogisticRegression(max_iter=100, solver="liblinear")
+    mod = KNeighborsClassifier(5, metric='cosine')
     scores = cross_val_score(mod, x, y, cv=4)
     return np.mean(scores)
 
