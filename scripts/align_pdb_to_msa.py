@@ -11,7 +11,7 @@ import argparse
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', type=str, default='/scratch/users/aderry/collapse/datasets/cdd_af2_dataset')
+parser.add_argument('--dataset', type=str, default='/scratch/users/aderry/collapse/datasets/pfam_pdb_dataset')
 args = parser.parse_args()
 
 def get_chain_sequences(df):
@@ -87,15 +87,15 @@ def align_pdb_to_msa(cdd_id):
         write_fasta(chain_seq_filt, f'/scratch/users/aderry/collapse/fasta/{pdb_chain}.fasta')
         subprocess.call(f'./muscle -profile -in1 /scratch/users/aderry/collapse/msa_pdb_aligned/{cdd_id}.afa -in2 /scratch/users/aderry/collapse/fasta/{pdb_chain}.fasta -out /scratch/users/aderry/collapse/msa_pdb_aligned/{cdd_id}.afa -quiet'.split())
 
-with open('pdb_resid.json', 'r') as fout:
+with open('pfam_pdb_resid.json', 'r') as fout:
     pdb_to_resid = json.load(fout)
-with open('pdb_idx.json', 'r') as fout:
+with open('pfam_pdb_idx.json', 'r') as fout:
     pdb_to_idx = json.load(fout)
 
 cdd_dataset_ = load_dataset(args.dataset, 'lmdb')
 cdd_set = set(cdd_dataset_.ids())
 
-pdb_dataset = load_dataset('../data/cdd_pdb_sp', 'pdb.gz', transform=cdd_transform)
+pdb_dataset = load_dataset('../data/pfam_pdb_sp', 'pdb.gz', transform=cdd_transform)
 
 inputs = [tuple([c]) for c in cdd_set]
 

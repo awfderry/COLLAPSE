@@ -17,14 +17,14 @@ import os
 import argparse
 import datetime
 from tqdm import tqdm
-#import wandb
+import wandb
 
 torch.autograd.set_detect_anomaly(True)
 
 parser = argparse.ArgumentParser(description='BYOL implementation for aligned protein environments')
-parser.add_argument('--val_dir', type=str, default='../data/datasets/pfam_pdb_balanced',
+parser.add_argument('--val_dir', type=str, default='/scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa',
                     help='location of dataset')
-parser.add_argument('--data_dir', type=str, default='/scratch/users/aderry/collapse/datasets/cdd_af2_dataset',
+parser.add_argument('--data_dir', type=str, default='/scratch/users/aderry/collapse/datasets/cdd_train_dataset',
                     help='location of dataset')
 parser.add_argument('--run_name', type=str, default=datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"), 
                     help='run name for logging')
@@ -36,7 +36,7 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=16, type=int,
                     help='mini-batch size')
-parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float,
+parser.add_argument('--lr', '--learning-rate', default=5e-5, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--dim', default=512, type=int, 
                     help='dimensionality of learned representations')
@@ -48,6 +48,7 @@ parser.add_argument('--parallel', action='store_true',
                     help='Use multiple GPUs')
 parser.add_argument('--tied_weights', action='store_true',
                     help='Use tied weights for target and online encoder (as in SimSiam)')
+
 
 args = parser.parse_args()
 
@@ -64,10 +65,15 @@ def evaluate(loader, model, device):
     pos_cosine = []
     neg_cosine = []
     for i, ((graph_anchor, graph_pos, graph_neg), meta) in enumerate(loader):
+        if (graph_anchor == None) or (graph_pos == None) or (graph_neg == None) or (meta == None):
+            print(f'validation batch i {i} has None as graph data')
+            continue
+        else:
+            print(f'validation batch i {i} has graph data')
         graph_anchor = graph_anchor.to(device)
         graph_pos = graph_pos.to(device)
         graph_neg = graph_neg.to(device)
-        res1, res2 = meta['res_labels']
+        res1, res2, res3 = meta['res_labels']
         cons = meta['conservation'].to(device)
         loss = model(graph_anchor, graph_pos, graph_neg, cons)
         losses.append(loss.item())
@@ -80,13 +86,14 @@ def evaluate(loader, model, device):
         if torch.isnan(a).any() or torch.isnan(b).any() or torch.isnan(c).any():
             continue
         
-        
         pos_cosine.extend(F.cosine_similarity(a, b).tolist())
-        neg_cosine.extend(F.cosine_similarity(a, c).tolist())
-        embeddings = torch.cat(embeddings).cpu().detach()
+        neg_cosine.extend(F.cosine_similarity(a, b[torch.randperm(b.size(0))]).tolist())
+        embeddings = torch.cat([embeddings[0], embeddings[1]]).cpu().detach()
         
         cls_x.append(embeddings)
         cls_y.append(torch.cat([res1, res2]))
+        
+    
     
     cls_x = torch.cat(cls_x)
     cls_y = torch.cat(cls_y)
@@ -100,28 +107,57 @@ def evaluate(loader, model, device):
 def main():
     
     
-    LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/losses.txt'
+    ## print the arguments:
+    print("Option '--run_name': ", args.run_name)
+    print("Option '--val_dir': ", args.val_dir)
+    print("Option '--data_dir': ", args.data_dir)
+    print("Option '--checkpoint': ", args.checkpoint)
+    print("Option '--lr': ", args.lr)
+    print("Option '--env_radius': ", args.env_radius)
+
+    
+    LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/losses.txt'
     
     if os.path.exists(LOSSES_FILE_ADDR):
         os.remove(LOSSES_FILE_ADDR)
     
-    RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/sampledResids.txt'
+    RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/sampledResids.txt'
     
     if os.path.exists(RES_SAMPLE_FILE_ADDR):
         os.remove(RES_SAMPLE_FILE_ADDR)
         
-    PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/pairResids.txt'
+    PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/pairResids.txt'
     
     if os.path.exists(PAIR_RESID_FILE_ADDR):
         os.remove(PAIR_RESID_FILE_ADDR)
+        
+        
+    ELEM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/elemContentNew.txt'
+    
+    if os.path.exists(ELEM_FILE_ADDR):
+        os.remove(ELEM_FILE_ADDR)
+        
+    MSA_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/MSAContent.txt'
+    if os.path.exists(MSA_FILE_ADDR):
+        os.remove(MSA_FILE_ADDR)
+        
+        
+    PATH_FCDD = "/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/failingCDD"
+    if os.path.exists(PATH_FCDD):
+        os.remove(PATH_FCDD)
+        
+    FILE_ADDR_ELEM = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/batchContent.txt'
+    if os.path.exists(FILE_ADDR_ELEM):
+        os.remove(FILE_ADDR_ELEM)
     
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    #wandb.init(project="collapse", name=args.run_name, config=vars(args))
+    wandb.init(project="collapse", name=args.run_name, config=vars(args))
     
-    train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
-    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=True, env_radius=args.env_radius, num_pairs_sampled=4))
+    #breakpoint()
+    train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
+    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
     
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
     
@@ -136,7 +172,7 @@ def main():
     device_ids = [i for i in range(torch.cuda.device_count())]
 
     # opt = torch.optim.SGD(params=model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-    opt = torch.optim.Adam(params=model.parameters(), lr=args.lr)
+    opt = torch.optim.AdamW(params=model.parameters(), lr=args.lr, weight_decay=0.01)
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=10, verbose=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=5000, eta_min=1e-6)
 
@@ -150,26 +186,63 @@ def main():
     if args.parallel:
         # print(f"Using {len(device_ids)} GPUs")
         model = DataParallel(model, device_ids=device_ids)
-        train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+        train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
         val_loader = DataListLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
     else:
-        breakpoint()
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+        #breakpoint()
+        #train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True, drop_last=True)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
           
     model.train()
     
-    #wandb.watch(model)
+    wandb.watch(model)
+    MAX_GRAD_NORM = 3
+    torch.nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
+    
+    """
+    epoch = -1
+    i = -1
+    grad_sum = 0
+    grad_max = 0
+    grad_min = 0
+    GRADSUM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/gradsum.txt'
+    file_gradsum = open(GRADSUM_FILE_ADDR, 'a')
+    for p in model.parameters():
+        if p.requires_grad:
+            pgrad = p.grad
+            if pgrad is None:
+                #pass
+                print('at epoch {} and i {}, the param p requires grad but has no grad parameter. \n'.format(epoch, i), file=file_gradsum)
+            elif torch.isnan(pgrad).any():
+                print('at epoch {} and i {}, the grad for param p has NaN. Pgrad with Nan \n {} PData for this {} \n\n'.format(epoch, i, pgrad, p.data), file=file_gradsum)
+
+            else: 
+                #pass
+                grad_sum += pgrad.sum()
+                grad_max = torch.max(pgrad)
+                grad_min = torch.min(pgrad)
+            print('at epoch {} and i {}, the grad sum for all parameters is {}, and the max is {} min is {} \n\n'.format(epoch, i, grad_sum, grad_max, grad_min), file=file_gradsum)
+
+    file_gradsum.close()
+    """
     
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         model.train()
         # print(f'EPOCH {epoch+1}:')
-
         for i, ((graph_anchor, graph_pos, graph_neg), meta) in enumerate(train_loader):
-            if i == 1:
-                print('i =', i)
+            if (graph_anchor == None) or (graph_pos == None) or (graph_neg == None) or (meta == None):
+                print(f'training epoch {epoch} batch i {i} has None as graph data')
+                continue
+            else:
+                print(f'training epoch {epoch} batch i {i} has graph data')
+            
+            """
+            print('i =', i)
+            if i == 5:
                 print('quitting peacefully')
                 quit()
+            """
             graph_anchor = graph_anchor.to(device)
             graph_pos = graph_pos.to(device)
             graph_neg = graph_neg.to(device)
@@ -178,21 +251,77 @@ def main():
                 try:
                     loss = model(graph_anchor, graph_pos, graph_neg, loss_weight=cons, return_projection=True)
                 except RuntimeError as e:
-                    if "CUDA out of memory" not in str(e): raise(e)
+                    if "CUDA out of memory" not in str(e): 
+                        MODPAR_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/modelPar.txt'
+                        file_modpar = open(MODPAR_FILE_ADDR, 'a')
+                        for p in model.parameters():
+                            if p.requires_grad:
+                                print('p.name {} \np.data \n{}\n\n'.format(p.name, p.data), file=file_modpar)
+                        file_modpar.close()  
+                        raise(e)
                     torch.cuda.empty_cache()
                     print('Out of Memory error!', flush=True)
                     continue
             # print(loss)
             opt.zero_grad()
-            loss.backward()
+            if loss == 0:
+                continue
+            
+            try:
+                loss.backward()
+            except Exception as e:
+                if ('MulBackward0' in str(e)) or ('memory' not in str(e)):
+                    MODPAR_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/modelPar.txt'
+                    file_modpar = open(MODPAR_FILE_ADDR, 'a')
+                    for p in model.parameters():
+                        if p.requires_grad:
+                            pdata = p.data
+                            pgrad = p.grad
+                            if torch.isnan(pgrad).any():
+                                print('gradient of p.name {} at epoch {} index {} contains NaN\n. This is what it looks like {}'.format(p.name, epoch, i, pgrad), file=file_modpar)
+                            elif torch.isnan(pdata).any():
+                                print('p.name {} at epoch {} index {} has a non-NaN gradient but data contains NaN\n'.format(p.name, epoch, i), file=file_modpar)
+                            else:
+                                print('p.name {} at epoch {} index {} does not contain NaN'.format(p.name, epoch, i), file=file_modpar)
+                            print('p.name {} \np.data \n{}\n\n'.format(p.name, pdata), file=file_modpar)
+                    #file_modpar.close()   
+                    print(f'at loss backward failure, here is graph_anchor\n {graph_anchor}\n\n and graph_pos\n{graph_pos}\n\n and graph neg\n {graph_neg}\n\nand meta {meta}\n', file=file_modpar)
+                    file_modpar.close() 
+                    raise Exception('loss backward failed. Look at the modelPar and hVNAN documents to find the source of the error. Full Error message: \n{}'.format(e))
+            torch.nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
             opt.step()
+            
+            grad_sum = 0
+            
+            GRADSUM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/gradsum.txt'
+            file_gradsum = open(GRADSUM_FILE_ADDR, 'a')
+            
+            for p in model.parameters():
+                if p.requires_grad:
+                    pgrad = p.grad
+                    if pgrad is None:
+                        pass
+                        #print('at epoch {} and i {}, the param p requires grad but has no grad parameter. \n'.format(epoch, i), file=file_gradsum)
+                    elif torch.isnan(pgrad).any():
+                        print('at epoch {} and i {}, the grad for param p has NaN. Pgrad with Nan \n {} PData for this {} \n\n'.format(epoch, i, pgrad, p.data), file=file_gradsum)
+                        print('graph 1 \n{} \n\n\ngraph 2 \n{}\n\n graph 3 \n{} \n\n\nmeta \n {}\n\n\n\n\n' .format(graph_anchor, graph_pos, graph_neg, meta))
+                    else: 
+                        pass
+                        #grad_sum += pgrad.sum()
+                        #grad_max = torch.max(pgrad)
+                        #grad_min = torch.min(pgrad)
+                    #print('at epoch {} and i {}, the grad sum for all parameters is {}, and the max is {} min is {} \n\n'.format(epoch, i, grad_sum, grad_max, grad_min), file=file_gradsum)
+            
+            file_gradsum.close()
+                    
+ 
             if not args.tied_weights:
                 model.update_moving_average(epoch) # update moving average of target encoder
-            #wandb.log({'loss': loss.item()})
-            # print(f'Iteration {i}: Loss: {loss.item()}')
+            wandb.log({'loss': loss.item()})
+            print(f'Epoch {epoch}: Iteration {i}: Loss: {loss.item()}')
         
         val_loss, acc, std, pos_cosine, neg_cosine = evaluate(val_loader, model, device)
-        #wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
+        wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
         
         # save your improved network
         if args.parallel:

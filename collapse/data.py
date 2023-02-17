@@ -24,6 +24,7 @@ import torch_cluster
 from collections.abc import Mapping, Sequence
 from collapse.byol_pytorch import BYOL
 from collapse.models import CDDModel
+import copy
 
 import pathlib
 
@@ -320,6 +321,7 @@ def extract_env_from_resid(df, ch_resid, env_radius=10.0, res_df=None, ca_center
         return None
     
     graph = transform(df_env)
+    graph.ch_resid = ch_resid
     
     return graph
 
@@ -354,7 +356,7 @@ class CDDTransform(object):
     Transforms LMDB dataset entries to featurized graphs. Returns a `torch_geometric.data.Data` graph
     '''
     
-    def __init__(self, env_radius=10.0, single_chain=False, include_af2=False, device='cpu', num_pairs_sampled=1):
+    def __init__(self, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', num_pairs_sampled=1):
         self.env_radius = env_radius
         self.single_chain = single_chain
         self.include_af2 = include_af2
@@ -366,46 +368,140 @@ class CDDTransform(object):
         pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
         cdd_id = elem['id'] 
         
-        #msa = elem['msa']
+        """
+        ELEM_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/elemContentNew.txt'
+        file_elem = open(ELEM_FILE_ADDR, 'a')
+        print('elem \n{}\n\n'.format(elem), file=file_elem)
+        print('cdd_id \n{}\n\n\n\n'.format(cdd_id), file=file_elem)
+        file_elem.close()
+        """
+        pdb_idx = dict(zip(elem['pdb_ids'], range(len(elem['pdb_ids']))))
+        cdd_id = elem['id']
         
-        # alternative way of reading msa
-        with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
-            try:
-                msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
-            except:
-                print(cdd_id)
-                return [((None, None), None)]
+        len_msa_seq_records = 0
+        
+        if 'msa' in elem:
+            msa = elem['msa']
+            
+            MSA_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/MSAContent.txt'
+            """
+            file_msa = open(MSA_FILE_ADDR, 'a')
+            print('msa \n{}\n'.format(msa), file=file_msa)
+            file_msa.close()
+            """
+            #breakpoint()
+            if hasattr(msa, 'pdb_seq_records'):
+                len_msa_seq_records = len(msa.pdb_seq_records)
+                """
+                file_msa = open(MSA_FILE_ADDR, 'w')
+                print('len_msa_seq_records is {}'.format(len_msa_seq_records), file=file_msa)
+                file_msa.close()
+                """
+        elif (not 'msa' in elem) or len_msa_seq_records == 0:
+            """
+            file_msa = open(MSA_FILE_ADDR, 'w')
+            print('len_msa_seq_records is {}'.format(len_msa_seq_records), file=file_msa)
+            file_msa.close()
+            """
+            with open(os.path.join(DATA_DIR, f'msa_pdb_aligned/{cdd_id}.afa')) as f:
+                try:
+                    msa = MSA(AlignIO.read(f, 'fasta'), include_af2=self.include_af2)
+                    """
+                    MSA_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputPretrain/MSAContentNew2.txt'
+                    file_msa = open(MSA_FILE_ADDR, 'w')
+                    print(msa, file=file_msa)
+                    file_msa.close()
+                    """
+                except:
+                    
+                    raise Exception('MSA reading is not working well in the data.py file for cdd_id {}.'.format(cdd_id))
+                    return [((None, None, None), None)]
         
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
         except Exception as e:
             # print('failed for MSA', cdd_id)
-            return [((None, None), None)]
+            print(e)
+            print('failed for MSA', cdd_id)
+            print(msa)
+            return [((None, None, None), None)]
         
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
+        
         df1, df2 = self._process_dataframes(elem['atoms'], pair_ids)
-
-        pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
+        
+        try:
+            pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
+        except:
+            
+            PATH_FCDD = "/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/failingCDD"
+            f_fcdd = open(PATH_FCDD, 'a')
+            print('failing cdd_id is {}'.format(cdd_id), file=f_fcdd)
+            print('failing cdd_id is ', cdd_id)
+            f_fcdd.close()
+            
+            #raise Exception('failing cdd_id is {}'.format(cdd_id))
+        
+       
+        #breakpoint()
+        
+        pos_triplicates = msa.sample_position_triplicates(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
         
        
         
+        try:
+            graphs_list = [self._process_graphs(*triplicate, df1, df2, pair_ids, pair_resids) for triplicate in pos_triplicates]
+        except:
+            print(cdd_id)
+            print(pair_ids)
+            print(pos_triplicates)
+            print(pair_resids)
+            graphs_list = [((None, None, None), None)]
         
-        pos_triplicates = msa.sample_position_triplicates(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
-        graphs_list = [self._process_graphs(*triplicate, df1, df2, pair_ids, pair_resids) for triplicate in pos_triplicates]
+        
         # print('graphs', graphs_list)
+        
+        
         return graphs_list
     
     def _process_graphs(self, posAnc, posPos, posNeg, cons, df1, df2, pair_ids, pair_resids):
          
-        PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/pairResids.txt'
+        PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/pairResids.txt'
+        """
         file_pair_resid = open(PAIR_RESID_FILE_ADDR, 'a')
-        print('pair_resids array is {}\n'.format(pair_resids), file=file_pair_resid)
+        print('pair_resids array is \n{}\n'.format(pair_resids), file=file_pair_resid)
         print('posAnc {}, posPos {}, posNeg {}\n'.format(posAnc, posPos, posNeg), file=file_pair_resid)
-        print('len(pair_resids[0]) is {}, len(pair_resids[1]) is {}'.format(len(pair_resids[0]),len(pair_resids[1])), file=file_pair_resid)
+        print('len(pair_resids[0]) is {}, len(pair_resids[1]) is {}\n\n\n'.format(len(pair_resids[0]),len(pair_resids[1])), file=file_pair_resid)
         file_pair_resid.close()
+        """
         
-        residAnc, residPos, residNeg = pair_resids[0][posAnc], pair_resids[1][posPos], pair_resids[0][posNeg]
+        if posAnc >= len(pair_resids[0]):
+            raise Exception('posAnc {} but len(pair_resids[0] = {}'.format(posAnc, len(pair_resids[0])))
+            
+        if posPos >= len(pair_resids[1]):
+            raise Exception('posPos {} but len(pair_resids[1] = {}'.format(posPos, len(pair_resids[1])))
+            
+        if posNeg >= len(pair_resids[0]):
+            if posAnc > 0:
+                posNeg = posAnc - 1
+            elif posAnc + 1 < len(pair_resids[0]):
+                posNeg = posAnc + 1
+            else:
+                posNeg = len(pair_resids[0]) - 1
+            #raise Exception('posPos {} but len(pair_resids[0] = {}'.format(posNeg, len(pair_resids[0])))
+            
+        try:
+            residAnc, residPos, residNeg = pair_resids[0][posAnc], pair_resids[1][posPos], pair_resids[0][posNeg]
+        except:
+            PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/pairResids.txt'
+            file_pair_resid = open(PAIR_RESID_FILE_ADDR, 'a')
+            print('index out of bounds error occured for pair id {}\n'.format(pair_ids), file=file_pair_resid)
+            print('pair_resids array is \n{}\n'.format(pair_resids), file=file_pair_resid)
+            print('posAnc {}, posPos {}, posNeg {}\n'.format(posAnc, posPos, posNeg), file=file_pair_resid)
+            print('len(pair_resids[0]) is {}, len(pair_resids[1]) is {}\n\n\n'.format(len(pair_resids[0]),len(pair_resids[1])), file=file_pair_resid)
+            file_pair_resid.close()
+            raise Exception('triplicate selection is not working in data.py')
        
         chain1, chain2 = pair_ids[0][-1], pair_ids[1][-1]
         
@@ -429,8 +525,8 @@ class CDDTransform(object):
         id2_id, id2_chain = id2.split('_')
 
         if self.single_chain:
-            df1 = atoms[(atoms['ensemble'].str.split('.').str[0] == id1_id) & (atoms['chain'] == id1_chain)]
-            df2 = atoms[(atoms['ensemble'].str.split('.').str[0] == id2_id) & (atoms['chain'] == id2_chain)]
+            df1 = atoms[(atoms['ensemble'].str.split('.').str[0].str.split('_').str[0] == id1_id) & (atoms['chain'] == id1_chain)]
+            df2 = atoms[(atoms['ensemble'].str.split('.').str[0].str.split('_').str[0] == id2_id) & (atoms['chain'] == id2_chain)]
         else:
             df1 = atoms[(atoms['ensemble'].str.split('.').str[0] == id1_id)]
             df1['same_chain'] = (df1['chain'] == id1_chain).astype(int)
@@ -438,6 +534,7 @@ class CDDTransform(object):
             df2['same_chain'] = (df2['chain'] == id2_chain).astype(int)
 
         return df1, df2
+    
 
 class EmbedTransform(object):
     '''
@@ -1029,7 +1126,7 @@ class MSA(MultipleSeqAlignment):
         return np.nonzero(valid_positions)[0]
     
     def get_aligned_positions_pairwise(self, r1, r2, seq_r1, seq_r2):
-        valid_positions = [i for i in range(self.get_alignment_length()) if '-' not in r1[i] + r2[i] + seq_r1[i] + seq_r2[i]]
+        valid_positions = [i for i in range(self.get_alignment_length()) if np.all(np.isin([r1[i], r2[i], seq_r1[i], seq_r2[i]], atom_info.aa_abbr[:20]))]
         return valid_positions
     
     def sequence_identity(self, r1, r2):
@@ -1052,19 +1149,22 @@ class MSA(MultipleSeqAlignment):
     def sample_negative_example(self, seq, sample_pos_pos, r1, r2, seq_r1, seq_r2):
         
         res_to_match = seq[sample_pos_pos]
-        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/sampledResids.txt'
+        """
+        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/sampledResids.txt'
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
         print('sequence of r1 is {}\n'.format(seq), file=file_res_sample)
         print('residue to match from the position {} in r1 is {}\n'.format(sample_pos_pos, res_to_match), file=file_res_sample)
         file_res_sample.close()
-        
+        """
         matchingResids = np.array(np.where(seq == res_to_match)).reshape(-1,)
-            
+        
+        """
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
         print('Here are the r1 seq positions where the same residue occurs {}\n'.format(matchingResids), file=file_res_sample)
         print('len(matchingResids) {} -- matchingResids.shape {}\n'.format(len(matchingResids), matchingResids.shape), file=file_res_sample)
         file_res_sample.close()
-
+        """
+        
         # if there's no matching residue, randomly pick
         if len(matchingResids) == 1:
             sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
@@ -1079,11 +1179,12 @@ class MSA(MultipleSeqAlignment):
         
         else:
             raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')
-
+        
+        """
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
         print('Here is the sampled negative pos {}\n'.format(sample_pos_neg), file=file_res_sample)
         file_res_sample.close()
-        
+        """
         return sample_pos_neg
     
     def sample_position_triplicates(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
@@ -1096,7 +1197,7 @@ class MSA(MultipleSeqAlignment):
         
         
         """
-        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/sampledResids.txt'
+        RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/sampledResids.txt'
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
         print('sequence of r1 is {}\n'.format(seq), file=file_res_sample)
         file_res_sample.close()
@@ -1163,7 +1264,7 @@ class MSA(MultipleSeqAlignment):
             pos_anchor = self.align_pos_to_seq_pos(sample_pos_pos, seq_r1)
             pos_positive = self.align_pos_to_seq_pos(sample_pos_pos, seq_r2)
             pos_negative = self.align_pos_to_seq_pos(sample_pos_neg, seq_r1)
-            return pos_anchor, pos_positive, pos_negative, cons
+            return [(pos_anchor, pos_positive, pos_negative, cons)]
         else:
             pos_pairs = []
             for posInd in range(len(sample_pos_pos)):
@@ -1182,7 +1283,7 @@ class MSA(MultipleSeqAlignment):
         for i, aa in enumerate(record):
             if i == pos:
                 break
-            if aa == '-':
+            if aa in ['-', 'X']:
                 gap_ct += 1
         return pos - gap_ct
   
@@ -1204,11 +1305,41 @@ class NoneCollater:
         self.exclude_keys = exclude_keys
 
     def __call__(self, batch, filter_batch=True):
-        breakpoint()
+        # === EXPLANATION #
+        """
+        This function is called on a list that has a tuple (or triple) of graphs, and meta data associated.
+        At first call, the filter batch is True, and it eliminates all Nones
+        Then, when elem is instance tuple, it recursively calls it on every single element to construct the batch.
+        
+        """
+        
+        
+        FILE_ADDR_ELEM = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/batchContent.txt'
+        file = open(FILE_ADDR_ELEM, 'a')
+       
+        """
         if filter_batch:
+            for b in batch:
+                for item in b:
+                    #file.writelines(item)
+                    print('item is\n{}\n\n'.format(item), file=file)
+                    print('len(item) is {}\n\n\n'.format(len(item)), file=file)
+            file.close()
+        """
+        
+        
+        #breakpoint()
+        if filter_batch:
+            batch_orig = copy.copy(batch)
             #batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None))]# if (item[0][0] is not None) & (item[0][1] is not None)]
-            batch = [item for b in batch for item in b if ((len(item)==3) and (item[0][0] is not None) and (item[0][1] is not None) and (item[0][2] is not None))]
-        elem = batch[0]
+            batch = [item for b in batch for item in b if ((len(item)==2) and (item[0][0] is not None) and (item[0][1] is not None) and (item[0][2] is not None))]
+        
+            
+        try:
+            elem = batch[0]
+        except:
+            return ((None, None, None), None)
+            #raise Exception('NoneCollater error. \n batch_orig \n{}\n\n'.format(batch_orig))
         if isinstance(elem, BaseData):
             return Batch.from_data_list(batch, self.follow_batch,
                                         self.exclude_keys)

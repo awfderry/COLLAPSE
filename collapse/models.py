@@ -99,7 +99,24 @@ class CDDModel(nn.Module):
         batch_id = batch.batch
         
         for layer in self.layers:
-            h_V = layer(h_V, batch.edge_index, h_E)
+            for subtensor in h_V:
+                if torch.isnan(subtensor).any():
+                    HV_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/hvNAN.txt'
+                    file_hv = open(HV_FILE_ADDR, 'a')
+                    print('h_V tensor w NaN inside CDDModel forward() \n{} \n\n and batch \n {}\n\n'.format(h_V, batch), file=file_hv)
+                    file_hv.close()
+                    raise Exception('There is NaN in h_V subtensor \n {} \n inside CDDModel forward before layer \n{} \n\n for batch \n {} \n\n'.format(subtensor, layer, batch))
+            try:
+                h_V = layer(h_V, batch.edge_index, h_E)
+            except Exception as e:
+                err_message = str(e)
+                if 'nan' in err_message or 'NaN' in err_message or 'MulBackward0' in err_message:
+                    HV_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/hvNAN.txt'
+                    file_hv = open(HV_FILE_ADDR, 'a')
+                    print('non-NAN h_V tensor failing w NaN inside CDDModel forward() \n{} \n\n and batch \n {}\n\n. Full error is {}'.format(h_V, batch, e), file=file_hv)
+                    file_hv.close()
+                 
+                #raise Exception('NaN Error when there is no NaN in the input h_V subtensor \n {} \n inside CDDModel forward before layer \n{} \n\n for batch \n {} \n\n'.format(subtensor, layer, batch))
 
         out = self.W_out(h_V)
         if no_pool:

@@ -8,6 +8,7 @@ import math
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.nn import SoftMarginLoss
 
 # helper functions
 
@@ -41,9 +42,11 @@ def set_requires_grad(model, val):
 # loss fn
 
 def loss_fn(x, y):
-    x = F.normalize(x, dim=-1, p=2)
-    y = F.normalize(y, dim=-1, p=2)
-    return 2 - 2 * (x * y).sum(dim=-1)
+    #x = F.normalize(x, dim=-1, p=2)
+    #y = F.normalize(y, dim=-1, p=2)
+    diff = x - y
+    return torch.clamp(torch.abs(diff), min=0, max=1)
+    #return 2 - 2 * (x * y).sum(dim=-1)
 
         
 
@@ -176,6 +179,7 @@ class BYOL(nn.Module):
         self.target_ema_updater = EMA(moving_average_decay)
 
         self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
+        self.loss = SoftMarginLoss()
 
         # get device of network and make wrapper same device
         device = get_module_device(net)
@@ -220,6 +224,9 @@ class BYOL(nn.Module):
         online_pred_anchor = self.online_predictor(online_proj_anchor)
         online_pred_pos = self.online_predictor(online_proj_pos)
         online_pred_neg = self.online_predictor(online_proj_neg)
+        
+        if torch.isnan(online_proj_anchor).any() or torch.isnan(online_pred_pos).any() or torch.isnan(online_pred_neg).any() or (online_pred_anchor.nelement() == 0) or (online_pred_pos.nelement() == 0) or (online_pred_neg.nelement() == 0):
+            return 0
 
         with torch.no_grad():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
@@ -229,6 +236,9 @@ class BYOL(nn.Module):
             target_proj_anchor.detach_()
             target_proj_pos.detach_()
             target_proj_neg.detach_()
+        
+        if torch.isnan(target_proj_pos).any() or torch.isnan(target_proj_anchor).any() or torch.isnan(target_proj_neg).any() or (target_proj_anchor.nelement() == 0) or (target_proj_pos.nelement() == 0) or (target_proj_neg.nelement() == 0):
+            return 0
         
         # if the embeddings are very different, dist value is high
         dist_pos_1 = loss_fn(online_proj_anchor, target_proj_pos.detach())
@@ -245,11 +255,22 @@ class BYOL(nn.Module):
         exp_param = LOSS_WEIGHT_MULTIPLIER_HPARAM * loss_weight
         loss = torch.log(1 + torch.exp(exp_param * (dist_pos_combined - dist_neg_combined)))
         """
-        loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
-        loss = torch.clamp(loss, min=-0.5, max=10)
+        
+        len_dist_pos = dist_pos_combined.nelement()
+        len_dist_neg = dist_neg_combined.nelement()
+        
+        if len_dist_pos == 0 or len_dist_neg == 0 or len_dist_pos != len_dist_neg:
+            return 0
+            
+        
+        yLabel = -1*torch.ones_like(dist_pos_combined)
+        loss = self.loss((dist_pos_combined - dist_neg_combined), yLabel)
+        #loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
+        #loss = torch.clamp(loss, min=-0.5, max=10)
         
         
-        LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive_collapse/outputContrPretrain/losses.txt'
+        """
+        LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/losses.txt'
         file_losses = open(LOSSES_FILE_ADDR, 'a')
         print('losses and distances\n', file=file_losses)
         print('dist_pos_combined {}'.format(dist_pos_combined), file=file_losses)
@@ -257,5 +278,6 @@ class BYOL(nn.Module):
         print('loss {}'.format(loss), file=file_losses)
         print('\n\n\n', file=file_losses)
         file_losses.close()
+        """
         
-        return loss.mean()
+        return torch.clamp(loss.nanmean(), min=-1, max=3)
