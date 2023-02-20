@@ -119,6 +119,18 @@ class CDDModel(nn.Module):
                 #raise Exception('NaN Error when there is no NaN in the input h_V subtensor \n {} \n inside CDDModel forward before layer \n{} \n\n for batch \n {} \n\n'.format(subtensor, layer, batch))
 
         out = self.W_out(h_V)
+        
+        """
+        # normalize each 512 dimensional tensor (each atom) to have an L2 norm of 1
+        if int(out.size(0)) == 512:
+            norms = torch.norm(out, dim=0)
+            out = torch.div(out, norms.unsqueeze(0))
+        elif int(out.size(1)) == 512:
+            norms = torch.norm(out, dim=1)
+            out = torch.div(out, norms.unsqueeze(1))
+        """
+        
+    
         if no_pool:
             return out
 
@@ -129,6 +141,14 @@ class CDDModel(nn.Module):
             attn = softmax(attn, batch_id)
             out = torch_scatter.scatter_mean(attn * out, batch_id, dim=0)
 
+        # normalize each 512 dimensional tensor (site embedding) to have an L2 norm of 1
+        if int(out.size(0)) == 512:
+            norms = torch.norm(out, dim=0)
+            out = torch.div(out, norms.unsqueeze(0))
+        elif int(out.size(1)) == 512:
+            norms = torch.norm(out, dim=1)
+            out = torch.div(out, norms.unsqueeze(1))    
+        
         return out
    
     

@@ -42,12 +42,14 @@ def set_requires_grad(model, val):
 # loss fn
 
 def loss_fn(x, y):
-    #x = F.normalize(x, dim=-1, p=2)
-    #y = F.normalize(y, dim=-1, p=2)
-    diff = x - y
-    return torch.clamp(torch.abs(diff), min=0, max=1)
+    x = F.normalize(x, dim=-1, p=2)
+    y = F.normalize(y, dim=-1, p=2)
+    
+    #diff = x - y
+    #return torch.clamp(torch.abs(diff), min=0, max=2)
     #return 2 - 2 * (x * y).sum(dim=-1)
-
+    cosDist = 1 - (x * y).sum(dim=-1)
+    return torch.clamp(cosDist, min=0, max=2)
         
 
 # exponential moving average
@@ -241,12 +243,12 @@ class BYOL(nn.Module):
             return 0
         
         # if the embeddings are very different, dist value is high
-        dist_pos_1 = loss_fn(online_proj_anchor, target_proj_pos.detach())
-        dist_pos_2 = loss_fn(online_proj_pos, target_proj_anchor.detach())
+        dist_pos_1 = loss_fn(online_pred_anchor, target_proj_pos.detach())
+        dist_pos_2 = loss_fn(online_pred_pos, target_proj_anchor.detach())
         dist_pos_combined = dist_pos_1 + dist_pos_2
         
-        dist_neg_1 = loss_fn(online_proj_anchor, target_proj_neg.detach())
-        dist_neg_2 = loss_fn(online_proj_neg, target_proj_anchor.detach())
+        dist_neg_1 = loss_fn(online_pred_anchor, target_proj_neg.detach())
+        dist_neg_2 = loss_fn(online_pred_neg, target_proj_anchor.detach())
         dist_neg_combined = dist_neg_1 + dist_neg_2
         
         # this is an arbitrary parameter to crank up the loss
@@ -261,10 +263,20 @@ class BYOL(nn.Module):
         
         if len_dist_pos == 0 or len_dist_neg == 0 or len_dist_pos != len_dist_neg:
             return 0
-            
         
-        yLabel = -1*torch.ones_like(dist_pos_combined)
-        loss = self.loss((dist_pos_combined - dist_neg_combined), yLabel)
+        
+        embeddings_pos_neg = torch.cat([online_pred_pos, online_pred_neg])
+        std_pos_neg = torch.std(embeddings, dim=0)
+        # we want this to be high, so we want -min_std to be low
+        min_std = torch.min(std_pos_neg)
+        
+        
+        # MARGIN DIST OF 0.5
+        MARGIN = 3*torch.ones_like(dist_pos_combined, requires_grad=False)
+        yLabel = -1*torch.ones_like(dist_pos_combined, requires_grad=False)
+        # what we want to minimize
+        lossFn = dist_pos_combined - dist_neg_combined + MARGIN - min_std
+        loss = self.loss((2*dist_pos_combined - 0.5*dist_neg_combined + MARGIN), yLabel)
         #loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
         #loss = torch.clamp(loss, min=-0.5, max=10)
         
@@ -280,4 +292,4 @@ class BYOL(nn.Module):
         file_losses.close()
         """
         
-        return torch.clamp(loss.nanmean(), min=-1, max=3)
+        return torch.clamp(loss.nanmean(), min=-1, max=5)
