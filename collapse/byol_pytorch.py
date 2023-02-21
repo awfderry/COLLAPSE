@@ -265,18 +265,28 @@ class BYOL(nn.Module):
             return 0
         
         
+        """
         embeddings_pos_neg = torch.cat([online_pred_pos, online_pred_neg])
-        std_pos_neg = torch.std(embeddings, dim=0)
-        # we want this to be high, so we want -min_std to be low
-        min_std = torch.min(std_pos_neg)
+        std_pos_neg = torch.std(embeddings_pos_neg, dim=0)
+        
+        # we want the mean of the std to be high. So we want to minimize the negative of the mean
+        mean_std = torch.mean(std_pos_neg)
+        # we want the std of std to be low. So we want to minimize positive std_std.
+        std_std = torch.std(std_pos_neg)
+        """
+        
+        l1_dist_pos_neg = torch.clamp(torch.abs(online_pred_pos - online_pred_pos), min=0, max=2)
+        mean_l1 = torch.mean(torch.mean(l1_dist_pos_neg))
+        std_l1 = torch.std(l1_dist_pos_neg)
         
         
         # MARGIN DIST OF 0.5
-        MARGIN = 3*torch.ones_like(dist_pos_combined, requires_grad=False)
+        MARGIN = 6*torch.ones_like(dist_pos_combined, requires_grad=False)
         yLabel = -1*torch.ones_like(dist_pos_combined, requires_grad=False)
-        # what we want to minimize
-        lossFn = dist_pos_combined - dist_neg_combined + MARGIN - min_std
-        loss = self.loss((2*dist_pos_combined - 0.5*dist_neg_combined + MARGIN), yLabel)
+        # what we want to minimize: dist pos (0-2), std_l1 (0-2)
+        # what we want to maximize: dist_neg (0-2), mean_l1 (0-2)
+        loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN + 2*std_l1 - 2*mean_l1
+        loss = self.loss((loss_to_minimize), yLabel)
         #loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
         #loss = torch.clamp(loss, min=-0.5, max=10)
         
@@ -292,4 +302,4 @@ class BYOL(nn.Module):
         file_losses.close()
         """
         
-        return torch.clamp(loss.nanmean(), min=-1, max=5)
+        return torch.clamp(loss.nanmean(), min=-1, max=8)
