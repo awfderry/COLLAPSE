@@ -274,9 +274,8 @@ class BYOL(nn.Module):
         # we want the std of std to be low. So we want to minimize positive std_std.
         std_std = torch.std(std_pos_neg)
         """
-        
-        l1_dist_pos_neg = torch.clamp(torch.abs(online_pred_pos - online_pred_pos), min=0, max=2)
-        mean_l1 = torch.mean(torch.mean(l1_dist_pos_neg))
+        l1_dist_pos_neg = torch.clamp(torch.abs(online_pred_pos - online_pred_neg), min=0, max=2)
+        mean_l1 = torch.mean(l1_dist_pos_neg)
         std_l1 = torch.std(l1_dist_pos_neg)
         
         
