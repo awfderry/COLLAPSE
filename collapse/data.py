@@ -400,7 +400,7 @@ class CDDTransform(object):
     Transforms LMDB dataset entries to featurized graphs. Returns a `torch_geometric.data.Data` graph
     '''
     
-    def __init__(self, env_radius=10.0, single_chain=False, include_af2=False, device='cpu', num_pairs_sampled=1):
+    def __init__(self, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', num_pairs_sampled=1):
         self.env_radius = env_radius
         self.single_chain = single_chain
         self.include_af2 = include_af2
@@ -454,7 +454,9 @@ class CDDTransform(object):
                     file_msa.close()
                     """
                 except:
-                    print(cdd_id)
+                    print(e)
+                    print('failed for MSA', cdd_id)
+                    print(msa)
                     #raise Exception('MSA reading is not working well in the data.py file.')
                     return [((None, None), None)]
         
@@ -487,7 +489,14 @@ class CDDTransform(object):
         pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
         
         pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
-        graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
+        try:
+            graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
+        except:
+            graphs_list = []
+            print(cdd_id)
+            print(pair_ids)
+            print(pos_pairs)
+            print(pair_resids)
         # print('graphs', graphs_list)
         return graphs_list
     
@@ -514,8 +523,8 @@ class CDDTransform(object):
         id2_id, id2_chain = id2.split('_')
 
         if self.single_chain:
-            df1 = atoms[(atoms['ensemble'].str.split('.').str[0] == id1_id) & (atoms['chain'] == id1_chain)]
-            df2 = atoms[(atoms['ensemble'].str.split('.').str[0] == id2_id) & (atoms['chain'] == id2_chain)]
+            df1 = atoms[(atoms['ensemble'].str.split('.').str[0].str.split('_').str[0] == id1_id) & (atoms['chain'] == id1_chain)]
+            df2 = atoms[(atoms['ensemble'].str.split('.').str[0].str.split('_').str[0] == id2_id) & (atoms['chain'] == id2_chain)]
         else:
             df1 = atoms[(atoms['ensemble'].str.split('.').str[0] == id1_id)]
             df1['same_chain'] = (df1['chain'] == id1_chain).astype(int)
@@ -1115,7 +1124,7 @@ class MSA(MultipleSeqAlignment):
         return np.nonzero(valid_positions)[0]
     
     def get_aligned_positions_pairwise(self, r1, r2, seq_r1, seq_r2):
-        valid_positions = [i for i in range(self.get_alignment_length()) if '-' not in r1[i] + r2[i] + seq_r1[i] + seq_r2[i]]
+        valid_positions = [i for i in range(self.get_alignment_length()) if np.all(np.isin([r1[i], r2[i], seq_r1[i], seq_r2[i]], atom_info.aa_abbr[:20]))]
         return valid_positions
     
     def sequence_identity(self, r1, r2):
@@ -1145,7 +1154,7 @@ class MSA(MultipleSeqAlignment):
             cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos]) + 1)
             pos1 = self.align_pos_to_seq_pos(sample_pos, seq_r1)
             pos2 = self.align_pos_to_seq_pos(sample_pos, seq_r2)
-            return pos1, pos2, cons
+            return [(pos1, pos2, cons)]
         else:
             pos_pairs = []
             for pos in sample_pos:
@@ -1162,7 +1171,7 @@ class MSA(MultipleSeqAlignment):
         for i, aa in enumerate(record):
             if i == pos:
                 break
-            if aa == '-':
+            if aa in ['-', 'X']:
                 gap_ct += 1
         return pos - gap_ct
   
