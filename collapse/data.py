@@ -368,13 +368,7 @@ class CDDTransform(object):
         
         msa = elem['msa']
         
-        try:
-            r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
-        except Exception as e:
-            print(e)
-            print('failed for MSA', cdd_id)
-            print(msa)
-            return [((None, None), None)]
+        r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
         
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
 
@@ -384,13 +378,7 @@ class CDDTransform(object):
         
         pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
         
-        try:
-            graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
-        except:
-            print(cdd_id)
-            print(pair_ids)
-            print(pos_pairs)
-            print(pair_resids)
+        graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
             
         # print('graphs', graphs_list)
         return graphs_list

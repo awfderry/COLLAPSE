@@ -90,10 +90,9 @@ def main(args):
 
     results = pd.DataFrame(results)
     results = results.drop_duplicates(subset=['PDB'])
-    if not af_flag:
-        cols = ['Description', 'Classification', 'Keywords', 'Method', 'Uniprot', 'Citation']
-    else:
-        cols = ['Entry Name', 'Protein names', 'Gene Names', 'Organism']
+    
+    cols = ['Description', 'Classification', 'Keywords', 'Method', 'Uniprot', 'Citation']
+
     results[cols] = results['PDB'].apply(lambda x: pdb_meta.loc[x, cols])
     
     if args.verbose:
@@ -107,7 +106,7 @@ if __name__ == '__main__':
     parser.add_argument('pdb', type=str, help='Input PDB file')
     parser.add_argument('chain', type=str, help='Chain of query residue')
     parser.add_argument('resid', type=str, help='Query residue ID in letter+resnum format (e.g. A42)')
-    parser.add_argument('db', type=str, help='pre-computed embedding database in LMDB format')
+    parser.add_argument('db', type=str, help='pre-computed embedding database in pickle format')
     parser.add_argument('--outfile', type=str, default=None)
     parser.add_argument('--checkpoint', type=str, default='data/checkpoints/collapse_base.pt')
     parser.add_argument('--metadata', type=str, default='data/mappings/pdb_metadata.csv')
