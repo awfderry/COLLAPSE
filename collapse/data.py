@@ -367,26 +367,40 @@ class CDDTransform(object):
         cdd_id = elem['id']
         
         msa = elem['msa']
+        msa.cdd_id = cdd_id
         
-        r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
+        try:
+            r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
+        except Exception as e:
+            print(e)
+            print('failed for MSA', cdd_id)
+            print(msa)
+            return [((None, None), None)]
         
-        pair_ids = [r.id for r in (seq_r1, seq_r2)]
+        msa.pair_ids = [r.id for r in (seq_r1, seq_r2)]
 
-        df1, df2 = self._process_dataframes(elem['atoms'], pair_ids)
+        df1, df2 = self._process_dataframes(elem['atoms'], msa.pair_ids)
 
-        pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
+        msa.pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in msa.pair_ids]
         
-        pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
+        msa.pos_pairs = msa.sample_position_pairs(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
         
-        graphs_list = [self._process_graphs(*pair, df1, df2, pair_ids, pair_resids) for pair in pos_pairs]
+        try:
+            graphs_list = [self._process_graphs(*pair, df1, df2, msa) for pair in msa.pos_pairs]
+        except:
+            print(cdd_id)
+            print(msa.pair_ids)
+            print(msa.pos_pairs)
+            print(msa.pair_resids)
+            return [((None, None), None)]
             
         # print('graphs', graphs_list)
         return graphs_list
     
-    def _process_graphs(self, pos1, pos2, cons, df1, df2, pair_ids, pair_resids):
+    def _process_graphs(self, pos1, pos2, cons, df1, df2, msa):
         
-        resid1, resid2 = pair_resids[0][pos1], pair_resids[1][pos2]
-        chain1, chain2 = pair_ids[0][-1], pair_ids[1][-1]
+        resid1, resid2 = msa.pair_resids[0][pos1], msa.pair_resids[1][pos2]
+        chain1, chain2 = msa.pair_ids[0][-1], msa.pair_ids[1][-1]
         
         graph1 = extract_env_from_resid(df1.copy(), (chain1, resid1), self.env_radius, train_mode=True)
         graph2 = extract_env_from_resid(df2.copy(), (chain2, resid2), self.env_radius, train_mode=True)
@@ -394,8 +408,8 @@ class CDDTransform(object):
         metadata = {
             'res_labels': (atom_info.aa_to_label(resid1[0]), atom_info.aa_to_label(resid2[0])),
             'res_ids': (resid1, resid2),
-            'pdb_ids': pair_ids,
-            # 'cdd_id': cdd_id,
+            'pdb_ids': msa.pair_ids,
+            'cdd_id': msa.cdd_id,
             'conservation': cons
         }
         
@@ -1030,17 +1044,17 @@ class MSA(MultipleSeqAlignment):
         return r1, r2, seq_r1, seq_r2
 
     def sample_position_pairs(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
-        sample_pos = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
+        self.sample_pos = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=num_pairs, replace=False)
         
         if num_pairs == 1:
-            sample_pos = int(sample_pos[0])
+            sample_pos = int(self.sample_pos[0])
             cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos]) + 1)
             pos1 = self.align_pos_to_seq_pos(sample_pos, seq_r1)
             pos2 = self.align_pos_to_seq_pos(sample_pos, seq_r2)
             return [(pos1, pos2, cons)]
         else:
             pos_pairs = []
-            for pos in sample_pos:
+            for pos in self.sample_pos:
                 pos = int(pos)
                 cons = 1 / (self.calculate_entropy(self.full_msa[:, pos]) + 1)
                 # print(cons)

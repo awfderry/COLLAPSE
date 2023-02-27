@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Create conda environment
-conda create -n collapse python=3.8
-conda activate collapse
+#conda create -n collapse python=3.8
+#conda activate collapse
 
 # Install conda packages
 conda install pytorch==1.11.0 -c pytorch

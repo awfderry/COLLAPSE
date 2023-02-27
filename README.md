@@ -1,5 +1,5 @@
 # COLLAPSE
-COLLAPSE (COmpressed Latents Learned from Aligned Protein Structural Environments) is a representation learning method for protein structural and functional sites, as described in Derry et al. (2022). This repo contains all package functionality as well as scripts for functional site search and annotation, pre-training, and transfer learning on Prosite and ATOM3D datasets. For more details on COLLAPSE, please see our [preprint](https://www.biorxiv.org/content/10.1101/2022.07.20.500713v2).
+COLLAPSE (COmpressed Latents Learned from Aligned Protein Structural Environments) is a representation learning method for protein structural and functional sites, as described in Derry et al. (2022). This repo contains all package functionality as well as scripts for functional site search and annotation, pre-training, and transfer learning on Prosite and ATOM3D datasets. For more details on COLLAPSE, please see our [paper](https://onlinelibrary.wiley.com/doi/10.1002/pro.4541). Preprint is also freely available on [BioRxiv](https://www.biorxiv.org/content/10.1101/2022.07.20.500713v2).
 
 The repo is organized as follows:
 
@@ -11,7 +11,14 @@ The repo is organized as follows:
 
 ## Requirements
 
-We recommend installing COLLAPSE in a Conda environment (tested with GCC version 10.1.0). To create a Conda environment and download required packages on a machine with GPU, run the following script:
+We recommend installing COLLAPSE in a Conda environment (tested with GCC version 10.1.0). To create and activate your Conda environment, run the following:
+
+```
+conda create -n collapse python=3.9
+conda activate collapse
+```
+
+To download required packages on a machine with GPU with CUDA v11.7 (recommended), run the following script:
 
 ```
 ./install_dependencies.sh
@@ -159,6 +166,6 @@ This project is licensed under the [MIT license](LICENSE)
 
 ## References
 
-If you use COLLAPSE, please cite our preprint:
+If you use COLLAPSE, please cite our manuscript:
 
-> Derry, A., & Altman, R. B. (2022). COLLAPSE: A representation learning framework for identification and characterization of protein structural sites. bioRxiv.
+> Derry, A., & Altman, R. B. (2022). COLLAPSE: A representation learning framework for identification and characterization of protein structural sites. Protein Science 32(2). e4541. https://doi.org/10.1002/pro.4541.
