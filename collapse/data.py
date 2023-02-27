@@ -183,7 +183,9 @@ def process_pdb(pdb_file, chain=None, include_hets=True):
         atoms = atoms[atoms.resname.isin(atom_info.aa)].reset_index(drop=True)
     return atoms
 
+#added projection_hidden_size
 def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_base.pt'), train=False, device='cpu'):
+    
     dummy_graph = torch.load(os.path.join(DATA_DIR, 'dummy_graph.pt'))
     model = BYOL(
         CDDModel(out_dim=512, scatter_mean=True, attn=False, chain_ind=False),
@@ -195,6 +197,16 @@ def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_bas
         dense=False
     ).to(device)
     cpt = torch.load(checkpoint, map_location=device)
+    
+    # make sure that target_encoder parameters exist if the tied_weights are not used
+    cpt_model_keys = cpt['model_state_dict'].keys()
+    for param in cpt_model_keys:
+        if 'online_encoder' in param:
+            target_version = 'target_encoder' + param[len('online_encoder'):]
+            if target_version not in cpt_model_keys:
+                cpt['model_state_dict'][target_version] = cpt['model_state_dict'][param]
+    
+    
     model.load_state_dict(cpt['model_state_dict'])
     if train:
         model.train()

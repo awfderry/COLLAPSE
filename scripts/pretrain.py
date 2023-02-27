@@ -64,6 +64,7 @@ def evaluate(loader, model, device):
     losses = []
     pos_cosine = []
     neg_cosine = []
+    embeddings_triplets = []
     for i, ((graph_anchor, graph_pos, graph_neg), meta) in enumerate(loader):
         if (graph_anchor == None) or (graph_pos == None) or (graph_neg == None) or (meta == None):
             print(f'validation batch i {i} has None as graph data')
@@ -73,9 +74,10 @@ def evaluate(loader, model, device):
         graph_anchor = graph_anchor.to(device)
         graph_pos = graph_pos.to(device)
         graph_neg = graph_neg.to(device)
+        # the numbers in res1, res2 and res3 indicate amino acid residues. There are like 60 residues sampled
         res1, res2, res3 = meta['res_labels']
         cons = meta['conservation'].to(device)
-        loss = model(graph_anchor, graph_pos, graph_neg, cons)
+        loss = model(graph_anchor, graph_pos, graph_neg, cons) 
         losses.append(loss.item())
         
         # record std of embeddings (to check for collapsing solution)
@@ -84,25 +86,48 @@ def evaluate(loader, model, device):
         a, b, c = embeddings
         # getting rid of NaNs
         if torch.isnan(a).any() or torch.isnan(b).any() or torch.isnan(c).any():
+            print(f"There's NaN in a, b, c embeddings for batch {i}")
             continue
+        else:
+            print(f"There's no NaN in a, b, c embeddings for batch {i}. a.size {a.size()} -- b.size {b.size()} -- c.size {c.size()}")
+            
+            
         
         pos_cosine.extend(F.cosine_similarity(a, b).tolist())
-        neg_cosine.extend(F.cosine_similarity(a, b[torch.randperm(b.size(0))]).tolist())
+        # if graph list has only one graph, the permutation of b values wouldn't work, so we should use c (the negative)
+        if b.size(0) > 2:
+            neg_cosine.extend(F.cosine_similarity(a, b[torch.randperm(b.size(0))]).tolist())
+        elif a.size(0) == c.size(0):
+            print(f'graph has only {b.size(0)} positive example, so the negative example will be used with permutation for negative cosine instead of doing permutation of b')
+            neg_cosine.extend(F.cosine_similarity(a, c[torch.randperm(c.size(0))]).tolist())
+            
+        if a.size(0) == c.size(0) and c.size(0) == b.size(0) and (not torch.isnan(c).any()):
+            embeddings_triplets.append(torch.cat([embeddings[0], embeddings[1], embeddings[2]]).cpu().detach())
+            print(f"using triplicate to find the std in batch {i}")
+        else:
+            embeddings_triplets.append(torch.cat([embeddings[0], embeddings[1]]).cpu().detach())
+            
         embeddings = torch.cat([embeddings[0], embeddings[1]]).cpu().detach()
         
         cls_x.append(embeddings)
         cls_y.append(torch.cat([res1, res2]))
         
-    
-    
+   
     cls_x = torch.cat(cls_x)
     cls_y = torch.cat(cls_y)
     emb_norm = cls_x / torch.linalg.norm(cls_x, dim=1).unsqueeze(1)
     
     acc = train_cls(emb_norm, cls_y)
+    if len(embeddings_triplets) > 3*i//4:
+        embeddings_triplets = torch.cat(embeddings_triplets)
+        emb_norm_triplet = embeddings_triplets / torch.linalg.norm(embeddings_triplets, dim=1).unsqueeze(1)
+        std = torch.std(emb_norm_triplet, dim=0)
+    else: 
+        std = torch.std(emb_norm, dim=0)
     
-    std = torch.std(emb_norm, dim=0)
-    return np.mean(losses), acc, std.mean(), np.mean(pos_cosine), np.mean(neg_cosine)
+    print(f"The number of dimensions with zero std is {sum(std==0)}")
+    
+    return np.mean(losses, axis=None), acc, float(torch.mean(std)), np.mean(pos_cosine), np.mean(neg_cosine)
 
 def main():
     
@@ -178,6 +203,15 @@ def main():
 
     if args.checkpoint != "":
         cpt = torch.load(args.checkpoint, map_location=device)
+        if not args.tied_weights:
+            cpt_model_keys = cpt['model_state_dict'].keys()
+            for param in cpt_model_keys:
+                if 'online_encoder' in param:
+                    target_version = 'target_encoder' + param[len('online_encoder'):]
+                    if target_version not in cpt_model_keys:
+                        cpt['model_state_dict'][target_version] = cpt['model_state_dict'][param]
+                
+             
         model.load_state_dict(cpt['model_state_dict'])
         # scheduler.load_state_dict(cpt['scheduler_state_dict'])
         opt.load_state_dict(cpt['optimizer_state_dict'])
@@ -226,11 +260,14 @@ def main():
 
     file_gradsum.close()
     """
-    
+    best_cos_diff = 0
+    best_std = 0
+    best_acc = 0
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         model.train()
         # print(f'EPOCH {epoch+1}:')
         for i, ((graph_anchor, graph_pos, graph_neg), meta) in enumerate(train_loader):
+          
             if (graph_anchor == None) or (graph_pos == None) or (graph_neg == None) or (meta == None):
                 print(f'training epoch {epoch} batch i {i} has None as graph data')
                 continue
@@ -323,20 +360,27 @@ def main():
         val_loss, acc, std, pos_cosine, neg_cosine = evaluate(val_loader, model, device)
         wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
         
-        # save your improved network
-        if args.parallel:
-            torch.save({'model_state_dict': model.module.state_dict(),
+        # save your improved network only if it's an improvement
+        if ((pos_cosine - neg_cosine) > best_cos_diff) and (std > best_std) and (acc > best_acc):
+            if args.parallel:
+                torch.save({'model_state_dict': model.module.state_dict(),
+                            'optimizer_state_dict': opt.state_dict(),
+                            # 'scheduler_state_dict': scheduler.state_dict(),
+                            'epoch': epoch
+                            }, f'../data/checkpoints/{args.run_name}.pt')
+            else:
+                torch.save({'model_state_dict': model.state_dict(),
                         'optimizer_state_dict': opt.state_dict(),
                         # 'scheduler_state_dict': scheduler.state_dict(),
                         'epoch': epoch
                         }, f'../data/checkpoints/{args.run_name}.pt')
-        else:
-            torch.save({'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': opt.state_dict(),
-                    # 'scheduler_state_dict': scheduler.state_dict(),
-                    'epoch': epoch
-                    }, f'../data/checkpoints/{args.run_name}.pt')
+            
+            best_cos_diff = pos_cosine - neg_cosine
+            best_std = std
+            best_acc = acc
+            
         # scheduler.step(val_loss)
+        
 
 def train_cls(x, y):
     mod = LogisticRegression(max_iter=100, solver="liblinear")
