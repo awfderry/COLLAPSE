@@ -204,7 +204,7 @@ def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_bas
     model = BYOL(
         CDDModel(out_dim=512, scatter_mean=True, attn=False, chain_ind=False),
         projection_size=512,
-        projection_hidden_size=1024,
+        projection_hidden_size=4096,
         dummy_graph=dummy_graph,
         hidden_layer = -1,
         use_momentum = True,
