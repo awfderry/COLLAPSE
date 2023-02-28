@@ -285,11 +285,11 @@ class BYOL(nn.Module):
         std_l1 = torch.std(l1_dist_pos_neg)
         
         # MARGIN DIST OF 0.5
-        MARGIN = 7*torch.ones_like(dist_pos_combined, requires_grad=False)
+        MARGIN = 10*torch.ones_like(dist_pos_combined, requires_grad=False)
         yLabel = -1*torch.ones_like(dist_pos_combined, requires_grad=False)
         # what we want to minimize: dist pos (0-2), std_l1 (0-2)
         # what we want to maximize: dist_neg (0-2), mean_l1 (0-2)
-        loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN - 5*mean_l1 + 3*std_l1
+        loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN - 10*mean_l1 + 1*std_l1
         loss = self.loss((loss_to_minimize), yLabel)
         #loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
         #loss = torch.clamp(loss, min=-0.5, max=10)
@@ -310,4 +310,4 @@ class BYOL(nn.Module):
         file_losses.close()
         """
         
-        return torch.clamp(loss.nanmean(), min=-1, max=8)
+        return torch.clamp(loss.nanmean(), min=-1, max=10)
