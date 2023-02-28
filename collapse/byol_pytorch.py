@@ -265,7 +265,7 @@ class BYOL(nn.Module):
             return 0
         
         
-        """
+        
         embeddings_pos_neg = torch.cat([online_pred_pos, online_pred_neg])
         std_pos_neg = torch.std(embeddings_pos_neg, dim=0)
         
@@ -273,13 +273,13 @@ class BYOL(nn.Module):
         mean_std = torch.mean(std_pos_neg)
         # we want the std of std to be low. So we want to minimize positive std_std.
         std_std = torch.std(std_pos_neg)
-        MARGIN = 6*torch.ones_like(dist_pos_combined, requires_grad=False)
+        MARGIN = 10*torch.ones_like(dist_pos_combined, requires_grad=False)
         yLabel = -1*torch.ones_like(dist_pos_combined, requires_grad=False)
         loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN - 4*mean_std + 4*std_std
         loss = self.loss((loss_to_minimize), yLabel)
+        
+        
         """
-        
-        
         l1_dist_pos_neg = torch.clamp(torch.abs(online_pred_pos - online_pred_neg), min=0, max=2)
         mean_l1 = torch.mean(l1_dist_pos_neg)
         std_l1 = torch.std(l1_dist_pos_neg)
@@ -293,7 +293,7 @@ class BYOL(nn.Module):
         loss = self.loss((loss_to_minimize), yLabel)
         #loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
         #loss = torch.clamp(loss, min=-0.5, max=10)
-        
+        """
         
         
        
