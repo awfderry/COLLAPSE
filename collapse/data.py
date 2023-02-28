@@ -190,16 +190,16 @@ def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_bas
     model = BYOL(
         CDDModel(out_dim=512, scatter_mean=True, attn=False, chain_ind=False),
         projection_size=512,
-        projection_hidden_size=1024,
+        projection_hidden_size=4096,
         dummy_graph=dummy_graph,
         hidden_layer = -1,
         use_momentum = True,
         dense=False
     ).to(device)
-    cpt = torch.load(checkpoint, map_location=device)
+    cpt = dict(torch.load(checkpoint, map_location=device))
     
     # make sure that target_encoder parameters exist if the tied_weights are not used
-    cpt_model_keys = cpt['model_state_dict'].keys()
+    cpt_model_keys = list(cpt['model_state_dict'].keys())
     for param in cpt_model_keys:
         if 'online_encoder' in param:
             target_version = 'target_encoder' + param[len('online_encoder'):]

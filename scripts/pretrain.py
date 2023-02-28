@@ -202,9 +202,9 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=5000, eta_min=1e-6)
 
     if args.checkpoint != "":
-        cpt = torch.load(args.checkpoint, map_location=device)
+        cpt = dict(torch.load(args.checkpoint, map_location=device))
         if not args.tied_weights:
-            cpt_model_keys = cpt['model_state_dict'].keys()
+            cpt_model_keys = list(cpt['model_state_dict'].keys())
             for param in cpt_model_keys:
                 if 'online_encoder' in param:
                     target_version = 'target_encoder' + param[len('online_encoder'):]
@@ -216,6 +216,8 @@ def main():
         # scheduler.load_state_dict(cpt['scheduler_state_dict'])
         opt.load_state_dict(cpt['optimizer_state_dict'])
         args.start_epoch = cpt['epoch']
+        
+        print('successfully loaded the modified checkpoint that includes target encoder parameters')
         
     if args.parallel:
         # print(f"Using {len(device_ids)} GPUs")
