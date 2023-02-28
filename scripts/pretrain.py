@@ -153,7 +153,6 @@ def main():
                     torch.cuda.empty_cache()
                     print('Out of Memory error!', flush=True)
                     continue
-            
             # print(loss)
             opt.zero_grad()
             loss.backward()

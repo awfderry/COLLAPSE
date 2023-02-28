@@ -34,10 +34,13 @@ def main(args):
     if len(pdb_ids[0].split('_')[0]) > 4:
         af_flag = True
     
+    print(pdb_ids[:5])
+    print(len(set([p[:4] for p in pdb_ids])))
+    
     pdb_meta = pd.read_csv(args.metadata, index_col=0, sep=None)
     
     if query_pdb not in pdb_meta.index:
-        pdb_meta.loc[query_pdb + '_' + args.chain, :] = ['N/A'] * pdb_meta.shape[1]
+        pdb_meta = pdb_meta.append(pd.Series(data=['N/A'] * pdb_meta.shape[1], index=pdb_meta.columns, name=query_pdb))
     
     # filter DB to same residue, for efficiency
     residues = np.array([r[0] for r in db_data['resids']])
@@ -92,8 +95,8 @@ def main(args):
     results = results.drop_duplicates(subset=['PDB'])
     
     cols = ['Description', 'Classification', 'Keywords', 'Method', 'Uniprot', 'Citation']
-
-    results[cols] = results['PDB'].apply(lambda x: pdb_meta.loc[x, cols])
+    
+    results[cols] = results['PDB'].apply(lambda x: pdb_meta.loc[x[:4], cols])
     
     if args.verbose:
         print(results)
