@@ -258,6 +258,7 @@ class BYOL(nn.Module):
         loss = torch.log(1 + torch.exp(exp_param * (dist_pos_combined - dist_neg_combined)))
         """
         
+        """
         len_dist_pos = dist_pos_combined.nelement()
         len_dist_neg = dist_neg_combined.nelement()
         
@@ -277,23 +278,27 @@ class BYOL(nn.Module):
         yLabel = -1*torch.ones_like(dist_pos_combined, requires_grad=False)
         loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN - 4*mean_std + 4*std_std
         loss = self.loss((loss_to_minimize), yLabel)
-        
-        
         """
-        l1_dist_pos_neg = torch.clamp(torch.abs(online_pred_pos - online_pred_neg), min=0, max=2)
+        
+        
+        l1_dist_pos = torch.clamp(torch.abs(online_pred_pos - online_pred_anc), min=0, max=2)
+        l1_dist_neg = torch.clamp(torch.abs(online_pred_neg - online_pred_anc), min=0, max=2)
+        # we want this to be high, as in, we want higher negative distance than positive distance
+        # so we want to minimize negative l1 dist
+        l1_dist_pos_neg = l1_dist_neg - l1_dist_pos
         mean_l1 = torch.mean(l1_dist_pos_neg)
-        std_l1 = torch.std(l1_dist_pos_neg)
+        #std_l1 = torch.std(l1_dist_pos_neg)
         
         # MARGIN DIST OF 0.5
         MARGIN = 10*torch.ones_like(dist_pos_combined, requires_grad=False)
         yLabel = -1*torch.ones_like(dist_pos_combined, requires_grad=False)
         # what we want to minimize: dist pos (0-2), std_l1 (0-2)
         # what we want to maximize: dist_neg (0-2), mean_l1 (0-2)
-        loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN - 10*mean_l1 + 1*std_l1
+        loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN - 4*mean_l1 #+ 1*std_l1
         loss = self.loss((loss_to_minimize), yLabel)
         #loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
         #loss = torch.clamp(loss, min=-0.5, max=10)
-        """
+        
         
         
        
