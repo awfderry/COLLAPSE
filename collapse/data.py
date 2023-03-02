@@ -368,7 +368,7 @@ class CDDTransform(object):
     Transforms LMDB dataset entries to featurized graphs. Returns a `torch_geometric.data.Data` graph
     '''
     
-    def __init__(self, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', p_hard_negative, num_pairs_sampled=1):
+    def __init__(self, p_hard_negative, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', num_pairs_sampled=1):
         self.env_radius = env_radius
         self.single_chain = single_chain
         self.include_af2 = include_af2
@@ -1210,7 +1210,7 @@ class MSA(MultipleSeqAlignment):
             if len(matchingResids) < 1:
                 raise Exception('The delete function malfunctioned and deleted too many things. Matching array is empty.')
             sample_pos_neg = np.random.choice(matchingResids, size=1)
-        elif len(matchingResids) == 1:
+        elif len(matchingResids) > 0:
             sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
         else:
             raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')

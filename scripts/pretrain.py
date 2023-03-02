@@ -183,7 +183,7 @@ def main():
     
     #breakpoint()
     #train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
-    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4, p_hard_negative=1))
+    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(p_hard_negative=1, single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
     
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
     
@@ -274,7 +274,7 @@ def main():
         percent_prog = (epoch - args.start_epoch)/epochNum
         p_hard_neg = np.tanh(4*percent_prog)
         
-        train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, p_hard_negative=p_hard_neg, num_pairs_sampled=4))
+        train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(p_hard_negative=p_hard_neg, single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
         if args.parallel:
             # print(f"Using {len(device_ids)} GPUs")
             model = DataParallel(model, device_ids=device_ids)
