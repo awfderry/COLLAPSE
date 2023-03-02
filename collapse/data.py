@@ -368,7 +368,7 @@ class CDDTransform(object):
     Transforms LMDB dataset entries to featurized graphs. Returns a `torch_geometric.data.Data` graph
     '''
     
-    def __init__(self, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', num_pairs_sampled=1, p_hard_negative):
+    def __init__(self, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', p_hard_negative, num_pairs_sampled=1):
         self.env_radius = env_radius
         self.single_chain = single_chain
         self.include_af2 = include_af2
@@ -1224,7 +1224,7 @@ class MSA(MultipleSeqAlignment):
         """
         return sample_pos_neg
     
-    def sample_position_triplicates(self, r1, r2, seq_r1, seq_r2, num_pairs=1, p_hard_negative):
+    def sample_position_triplicates(self, r1, r2, seq_r1, seq_r2, p_hard_negative, num_pairs=1):
         aligned_positions = self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2)
         conservations = self.get_conservation(self.full_msa)[aligned_positions]
         norm_conservations = conservations/np.sum(conservations)

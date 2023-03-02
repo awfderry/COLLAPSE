@@ -274,7 +274,7 @@ def main():
         percent_prog = (epoch - args.start_epoch)/epochNum
         p_hard_neg = np.tanh(4*percent_prog)
         
-        train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4,p_hard_negative=p_hard_neg))
+        train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, p_hard_negative=p_hard_neg, num_pairs_sampled=4))
         if args.parallel:
             # print(f"Using {len(device_ids)} GPUs")
             model = DataParallel(model, device_ids=device_ids)
