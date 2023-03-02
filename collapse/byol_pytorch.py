@@ -281,8 +281,8 @@ class BYOL(nn.Module):
         """
         
         
-        l1_dist_pos = torch.clamp(torch.abs(online_pred_pos - online_pred_anc), min=0, max=2)
-        l1_dist_neg = torch.clamp(torch.abs(online_pred_neg - online_pred_anc), min=0, max=2)
+        l1_dist_pos = torch.clamp(torch.abs(online_pred_pos - online_pred_anchor), min=0, max=2)
+        l1_dist_neg = torch.clamp(torch.abs(online_pred_neg - online_pred_anchor), min=0, max=2)
         # we want this to be high, as in, we want higher negative distance than positive distance
         # so we want to minimize negative l1 dist
         l1_dist_pos_neg = l1_dist_neg - l1_dist_pos

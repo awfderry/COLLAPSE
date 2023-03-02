@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --time=2-00:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --partition=gpu
+#SBATCH --partition=gpu,bioe,rbaltman
 #SBATCH --gres gpu:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=tartici@stanford.edu
@@ -14,6 +14,7 @@ echo “it’s working”
 cd /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/
 
 ml gcc/10.1.0
+source /oak/stanford/groups/rbaltman/alptartici/miniconda3/etc/profile.d/conda.sh
 conda activate collapse_contrastive
 ml gcc/10.1.0
 
@@ -24,7 +25,9 @@ conda info --envs
 export DATA_DIR=/scratch/users/aderry/collapse
 echo $DATA_DIR
 
-python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Feb21_alp_v1_outNormalizedMarginAndSTDL1_cosine --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Feb15_alp_v2ShuffNewTrainSoft.pt --tied_weights --epochs 400 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/37stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/37err.txt
+python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Feb27_alp_v2_nonTiedWeights_stdstd_stdmean --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Feb27_alp_v2.pt --epochs 404 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/39stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/39err.txt
+
+#python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Feb21_alp_v1_outNormalizedMarginAndSTDL1_cosine --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Feb15_alp_v2ShuffNewTrainSoft.pt --tied_weights --epochs 400 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/37stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/37err.txt
 
 #python -m pdb /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Feb11_alp_v4 --lr 1e-4 --tied_weights 
 

@@ -81,11 +81,11 @@ def train(args, device, log_dir, rep=None):
 
     train_dataset = LMDBDataset(os.path.join(args.data_dir, 'train'), transform=transform)
     val_dataset = LMDBDataset(os.path.join(args.data_dir, 'val'), transform=transform)
-    test_dataset = LMDBDataset(os.path.join(args.data_dir, 'test'), transform=transform)
+    #test_dataset = LMDBDataset(os.path.join(args.data_dir, 'test'), transform=transform)
     
     train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, args.batch_size, shuffle=False, num_workers=0)
-    test_loader = DataLoader(test_dataset, args.batch_size, shuffle=False, num_workers=0)
+    #test_loader = DataLoader(test_dataset, args.batch_size, shuffle=False, num_workers=0)
     
     for orig, mut, label in train_loader:
         dummy_graph = orig.clone()
@@ -94,7 +94,7 @@ def train(args, device, log_dir, rep=None):
         dummy_graph.edge_v = torch.randn_like(dummy_graph.edge_v)
         break
         
-    gnn_model = initialize_model(args.checkpoint, device=device, train=True)
+    gnn_model = initialize_model(args.checkpoint, device=device, train=True, use_momentum=(not args.tied_weights))
     ff_model = MLPPaired(args.hidden_dim, args.hidden_dim).to(device)
 
     best_val_loss = 999
@@ -132,33 +132,47 @@ def train(args, device, log_dir, rep=None):
     # Evaluate
     train_file = os.path.join(log_dir, f'msp-rep{rep}.best.train.pt')
     val_file = os.path.join(log_dir, f'msp-rep{rep}.best.val.pt')
-    test_file = os.path.join(log_dir, f'msp-rep{rep}.best.test.pt')
+    #test_file = os.path.join(log_dir, f'msp-rep{rep}.best.test.pt')
     cpt = torch.load(os.path.join(log_dir, f'best_weights_rep{rep}.pt'))
     gnn_model.load_state_dict(cpt['gcn_state_dict'])
     ff_model.load_state_dict(cpt['ff_state_dict'])
     _, _, _, y_true_train, y_pred_train = test(gnn_model, ff_model, train_loader, criterion, device)
     torch.save({'targets': y_true_train, 'predictions': y_pred_train}, train_file)
-    _, _, _, y_true_val, y_pred_val = test(gnn_model, ff_model, val_loader, criterion, device)
+    val_loss, auroc, auprc, y_true_val, y_pred_val = test(gnn_model, ff_model, val_loader, criterion, device)
     torch.save({'targets': y_true_val, 'predictions': y_pred_val}, val_file)
+    print(f'\tVal loss {val_loss}, Val AUROC {auroc}, Val auprc {auprc}')
+    """
     test_loss, auroc, auprc, y_true_test, y_pred_test = test(gnn_model, ff_model, test_loader, criterion, device)
     print(f'\tTest loss {test_loss}, Test AUROC {auroc}, Test auprc {auprc}')
     torch.save({'targets': y_true_test, 'predictions': y_pred_test}, test_file)
-    return test_loss, auroc, auprc
+    """
+    return val_loss, auroc, auprc
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str)
-    parser.add_argument('--checkpoint', type=str, default='../data/checkpoints/collapse_base.pt')
+    parser.add_argument('--checkpoint', type=str, default='/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/collapse_base.pt')
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--hidden_dim', type=int, default=512)
     parser.add_argument('--num_epochs', type=int, default=20)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--tied_weights', action='store_true',
+                    help='Use tied weights for target and online encoder (as in SimSiam)')
     parser.add_argument('--finetune', action='store_true')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     cpt = args.checkpoint.split('/')[-1].strip('.pt')
+    
+    print(f'data_dir {args.data_dir}\n')
+    print(f'checkpoint {args.checkpoint}\n')
+    print(f'batch_size {args.batch_size}\n')
+    print(f'hidden_dim {args.hidden_dim}\n')
+    print(f'num_epochs {args.num_epochs}\n')
+    print(f'learning_rate {args.learning_rate}\n')
+    print(f'finetune {args.finetune}\n')
+    
         
     for rep, seed in enumerate(np.random.randint(0, 1000, size=3)):
         print('seed:', seed)

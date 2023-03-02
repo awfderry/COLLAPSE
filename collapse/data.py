@@ -184,7 +184,7 @@ def process_pdb(pdb_file, chain=None, include_hets=True):
     return atoms
 
 #added projection_hidden_size
-def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_base.pt'), train=False, device='cpu'):
+def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_base.pt'), train=False, device='cpu', use_momentum = True):
     
     dummy_graph = torch.load(os.path.join(DATA_DIR, 'dummy_graph.pt'))
     model = BYOL(
@@ -193,7 +193,7 @@ def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_bas
         projection_hidden_size=4096,
         dummy_graph=dummy_graph,
         hidden_layer = -1,
-        use_momentum = True,
+        use_momentum = use_momentum,
         dense=False
     ).to(device)
     cpt = dict(torch.load(checkpoint, map_location=device))
@@ -368,12 +368,13 @@ class CDDTransform(object):
     Transforms LMDB dataset entries to featurized graphs. Returns a `torch_geometric.data.Data` graph
     '''
     
-    def __init__(self, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', num_pairs_sampled=1):
+    def __init__(self, env_radius=10.0, single_chain=True, include_af2=False, device='cpu', num_pairs_sampled=1, p_hard_negative):
         self.env_radius = env_radius
         self.single_chain = single_chain
         self.include_af2 = include_af2
         self.device = device
         self.num_pairs_sampled = num_pairs_sampled
+        self.p_hard_negative = p_hard_negative
     
     def __call__(self, elem):
         # pdbids = [p.replace('_', '') for p in elem['pdb_ids']]
@@ -458,7 +459,7 @@ class CDDTransform(object):
        
         #breakpoint()
         
-        pos_triplicates = msa.sample_position_triplicates(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled)
+        pos_triplicates = msa.sample_position_triplicates(r1, r2, seq_r1, seq_r2, num_pairs=self.num_pairs_sampled, p_hard_negative=self.p_hard_negative)
         
        
         
@@ -488,6 +489,8 @@ class CDDTransform(object):
         file_pair_resid.close()
         """
         
+        
+        # robustness check
         if posAnc >= len(pair_resids[0]):
             raise Exception('posAnc {} but len(pair_resids[0] = {}'.format(posAnc, len(pair_resids[0])))
             
@@ -1158,7 +1161,7 @@ class MSA(MultipleSeqAlignment):
             r2 = [r for r in self._records if seq_r2.id.split('_')[0].upper() in r.id][0]
         return r1, r2, seq_r1, seq_r2
 
-    def sample_negative_example(self, seq, sample_pos_pos, r1, r2, seq_r1, seq_r2):
+    def sample_negative_example(self, seq, sample_pos_pos, r1, r2, seq_r1, seq_r2, p_hard_negative):
         
         res_to_match = seq[sample_pos_pos]
         """
@@ -1177,6 +1180,7 @@ class MSA(MultipleSeqAlignment):
         file_res_sample.close()
         """
         
+        """"
         # if there's no matching residue, randomly pick
         if len(matchingResids) == 1:
             sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
@@ -1191,6 +1195,27 @@ class MSA(MultipleSeqAlignment):
         
         else:
             raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')
+        """   
+            
+        #########################    
+            
+        # randomly deciding whether we will be sampling a hard negative example, which is when the residue type is the same  
+        diff_random = np.random.rand()
+        sample_hard_neg = diff_random < p_hard_negative 
+        
+        # if there are multiple residues of the same kind and if we were assigned to choose a hard negative, choose hard negative    
+        if len(matchingResids) > 1 and sample_hard_neg:
+            # make sure you don't pick the same residue
+            matchingResids = np.delete(matchingResids, np.where(matchingResids==sample_pos_pos))
+            if len(matchingResids) < 1:
+                raise Exception('The delete function malfunctioned and deleted too many things. Matching array is empty.')
+            sample_pos_neg = np.random.choice(matchingResids, size=1)
+        elif len(matchingResids) == 1:
+            sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
+        else:
+            raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')
+            
+            
         
         """
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
@@ -1199,7 +1224,7 @@ class MSA(MultipleSeqAlignment):
         """
         return sample_pos_neg
     
-    def sample_position_triplicates(self, r1, r2, seq_r1, seq_r2, num_pairs=1):
+    def sample_position_triplicates(self, r1, r2, seq_r1, seq_r2, num_pairs=1, p_hard_negative):
         aligned_positions = self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2)
         conservations = self.get_conservation(self.full_msa)[aligned_positions]
         norm_conservations = conservations/np.sum(conservations)
@@ -1271,7 +1296,7 @@ class MSA(MultipleSeqAlignment):
         # print(type(int(sample_pos[0])))
         if num_pairs == 1:
             sample_pos_pos = int(sample_pos_pos[0])
-            sample_pos_neg = int(self.sample_negative_example(seq, sample_pos_pos, r1, r2, seq_r1, seq_r2))
+            sample_pos_neg = int(self.sample_negative_example(seq, sample_pos_pos, r1, r2, seq_r1, seq_r2, p_hard_negative=p_hard_negative))
             cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos_pos]) + 1)
             pos_anchor = self.align_pos_to_seq_pos(sample_pos_pos, seq_r1)
             pos_positive = self.align_pos_to_seq_pos(sample_pos_pos, seq_r2)
@@ -1281,7 +1306,7 @@ class MSA(MultipleSeqAlignment):
             pos_pairs = []
             for posInd in range(len(sample_pos_pos)):
                 pos_pos = int(sample_pos_pos[posInd])
-                pos_neg = int(self.sample_negative_example(seq, pos_pos, r1, r2, seq_r1, seq_r2))
+                pos_neg = int(self.sample_negative_example(seq, pos_pos, r1, r2, seq_r1, seq_r2, p_hard_negative=p_hard_negative))
                 cons = 1 / (self.calculate_entropy(self.full_msa[:, pos_pos]) + 1)
                 # print(cons)
                 pos_anchor = self.align_pos_to_seq_pos(pos_pos, seq_r1)

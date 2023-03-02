@@ -141,6 +141,7 @@ def main():
     print("Option '--env_radius': ", args.env_radius)
 
     
+    """
     LOSSES_FILE_ADDR= '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/losses.txt'
     
     if os.path.exists(LOSSES_FILE_ADDR):
@@ -174,15 +175,15 @@ def main():
     FILE_ADDR_ELEM = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/batchContent.txt'
     if os.path.exists(FILE_ADDR_ELEM):
         os.remove(FILE_ADDR_ELEM)
-    
+    """
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     wandb.init(project="collapse", name=args.run_name, config=vars(args))
     
     #breakpoint()
-    train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
-    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
+    #train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
+    val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4, p_hard_negative=1))
     
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
     
@@ -222,12 +223,12 @@ def main():
     if args.parallel:
         # print(f"Using {len(device_ids)} GPUs")
         model = DataParallel(model, device_ids=device_ids)
-        train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+        #train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
         val_loader = DataListLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
     else:
         #breakpoint()
         #train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True, drop_last=True)
+        #train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True, drop_last=True)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
           
     model.train()
@@ -265,7 +266,24 @@ def main():
     best_cos_diff = 0
     best_std = 0
     best_acc = 0
+    
+    epochNum = float(args.epochs - args.start_epoch)
+    
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
+        # adjust the difficulty of negative examples. make the harder as training progresses
+        percent_prog = (epoch - args.start_epoch)/epochNum
+        p_hard_neg = np.tanh(4*percent_prog)
+        
+        train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4,p_hard_negative=p_hard_neg))
+        if args.parallel:
+            # print(f"Using {len(device_ids)} GPUs")
+            model = DataParallel(model, device_ids=device_ids)
+            train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+        else:
+            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True, drop_last=True)
+            
+
+        
         model.train()
         # print(f'EPOCH {epoch+1}:')
         for i, ((graph_anchor, graph_pos, graph_neg), meta) in enumerate(train_loader):

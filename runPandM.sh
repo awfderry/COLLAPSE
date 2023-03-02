@@ -5,7 +5,7 @@
 #SBATCH --gres gpu:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=tartici@stanford.edu
-#SBATCH --job-name=c3_P&M
+#SBATCH --job-name=c7_P&M
 #SBATCH --mem=120G
 
 sleep 1
@@ -31,9 +31,9 @@ echo $DATA_DIR
 # 2. no tied weights
 # change the output addresses
 
-python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Feb28_alp_v5_nonTiedWeights_L1mean --epochs 200 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/46stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/46err.txt
+python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Mar1_alp_v1_nonTied_L1mean_curric --epochs 200 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/47stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/47err.txt
 
 #python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Feb28_alp_v1_nonTiedWeights_stdstd_stdmean --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Feb27_alp_v1.pt --epochs 404 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/43stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/43err.txt
 
 
-python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/msp_train.py --checkpoint contr_Feb28_alp_v5_nonTiedWeights_L1mean.pt --data_dir=/scratch/users/aderry/atom3d/lmdb/MSP/splits/split-by-sequence-identity-30/data --finetune >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/MSPoutput/06stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/MSPoutput/06err.txt
+python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/msp_train.py --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Mar1_alp_v1_nonTied_L1mean_curric.pt --data_dir=/scratch/users/aderry/atom3d/lmdb/MSP/splits/split-by-sequence-identity-30/data --finetune >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/MSPoutput/07stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/MSPoutput/07err.txt
