@@ -48,8 +48,8 @@ def loss_fn(x, y):
     #diff = x - y
     #return torch.clamp(torch.abs(diff), min=0, max=2)
     #return 2 - 2 * (x * y).sum(dim=-1)
-    cosDist = 1 - (x * y).sum(dim=-1)
-    return torch.clamp(cosDist, min=0, max=2)
+    cosDist = 2 - 2*(x * y).sum(dim=-1)
+    return torch.clamp(cosDist, min=0, max=4)
         
 
 # exponential moving average
@@ -280,7 +280,7 @@ class BYOL(nn.Module):
         loss = self.loss((loss_to_minimize), yLabel)
         """
         
-        
+        """
         l1_dist_pos = torch.clamp(torch.abs(online_pred_pos - online_pred_anchor), min=0, max=2)
         l1_dist_neg = torch.clamp(torch.abs(online_pred_neg - online_pred_anchor), min=0, max=2)
         # we want this to be high, as in, we want higher negative distance than positive distance
@@ -288,13 +288,14 @@ class BYOL(nn.Module):
         l1_dist_pos_neg = l1_dist_neg - l1_dist_pos
         mean_l1 = torch.mean(l1_dist_pos_neg)
         #std_l1 = torch.std(l1_dist_pos_neg)
+        """
         
         # MARGIN DIST OF 0.5
-        MARGIN = 10*torch.ones_like(dist_pos_combined, requires_grad=False)
+        MARGIN = 8*torch.ones_like(dist_pos_combined, requires_grad=False)
         yLabel = -1*torch.ones_like(dist_pos_combined, requires_grad=False)
         # what we want to minimize: dist pos (0-2), std_l1 (0-2)
         # what we want to maximize: dist_neg (0-2), mean_l1 (0-2)
-        loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN - 4*mean_l1 #+ 1*std_l1
+        loss_to_minimize = dist_pos_combined - dist_neg_combined + MARGIN # - 4*mean_l1 #+ 1*std_l1
         loss = self.loss((loss_to_minimize), yLabel)
         #loss = torch.log(1 + torch.exp(dist_pos_combined - dist_neg_combined))
         #loss = torch.clamp(loss, min=-0.5, max=10)
