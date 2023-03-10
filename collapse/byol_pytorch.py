@@ -73,7 +73,7 @@ def update_moving_average(ema_updater, ma_model, current_model, current_epoch):
 # MLP class for projector and predictor
 
 class MLP(nn.Module):
-    def __init__(self, dim, projection_size, hidden_size = 4096):
+    def __init__(self, dim, projection_size, hidden_size = 1024):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_size),
@@ -163,7 +163,7 @@ class BYOL(nn.Module):
         dummy_graph,
         hidden_layer = -1,
         projection_size = 512,
-        projection_hidden_size = 4096,
+        projection_hidden_size = 1024,
         augment_fn = None,
         augment_fn2 = None,
         moving_average_decay = 0.99,

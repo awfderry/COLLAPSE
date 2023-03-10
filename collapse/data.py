@@ -190,7 +190,7 @@ def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_bas
     model = BYOL(
         CDDModel(out_dim=512, scatter_mean=True, attn=False, chain_ind=False),
         projection_size=512,
-        projection_hidden_size=4096,
+        projection_hidden_size=1024,
         dummy_graph=dummy_graph,
         hidden_layer = -1,
         use_momentum = use_momentum,
@@ -496,18 +496,19 @@ class CDDTransform(object):
             
         if posPos >= len(pair_resids[1]):
             raise Exception('posPos {} but len(pair_resids[1] = {}'.format(posPos, len(pair_resids[1])))
-            
-        if posNeg >= len(pair_resids[0]):
-            if posAnc > 0:
-                posNeg = posAnc - 1
-            elif posAnc + 1 < len(pair_resids[0]):
-                posNeg = posAnc + 1
+        
+        POS_NEG_SEQ_DIST = 20
+        if posNeg >= len(pair_resids[1]):
+            if posPos > POS_NEG_SEQ_DIST:
+                posNeg = posPos - POS_NEG_SEQ_DIST
+            elif posPos + POS_NEG_SEQ_DIST < len(pair_resids[1]):
+                posNeg = posPos + POS_NEG_SEQ_DIST
             else:
-                posNeg = len(pair_resids[0]) - 1
+                posNeg = len(pair_resids[1]) - 1
             #raise Exception('posPos {} but len(pair_resids[0] = {}'.format(posNeg, len(pair_resids[0])))
             
         try:
-            residAnc, residPos, residNeg = pair_resids[0][posAnc], pair_resids[1][posPos], pair_resids[0][posNeg]
+            residAnc, residPos, residNeg = pair_resids[0][posAnc], pair_resids[1][posPos], pair_resids[1][posNeg]
         except:
             PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/pairResids.txt'
             file_pair_resid = open(PAIR_RESID_FILE_ADDR, 'a')
@@ -522,7 +523,7 @@ class CDDTransform(object):
         
         graphAnc = extract_env_from_resid(df1.copy(), (chain1, residAnc), self.env_radius, train_mode=True)
         graphPos = extract_env_from_resid(df2.copy(), (chain2, residPos), self.env_radius, train_mode=True)
-        graphNeg = extract_env_from_resid(df1.copy(), (chain1, residNeg), self.env_radius, train_mode=True)
+        graphNeg = extract_env_from_resid(df2.copy(), (chain2, residNeg), self.env_radius, train_mode=True)
         
         metadata = {
             'res_labels': (atom_info.aa_to_label(residAnc[0]), atom_info.aa_to_label(residPos[0]), atom_info.aa_to_label(residNeg[0])),
@@ -1163,7 +1164,7 @@ class MSA(MultipleSeqAlignment):
 
     def sample_negative_example(self, seq, sample_pos_pos, r1, r2, seq_r1, seq_r2, p_hard_negative):
         
-        res_to_match = seq[sample_pos_pos]
+        res_to_match = np.array(r1.seq)[sample_pos_pos]
         """
         RES_SAMPLE_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/sampledResids.txt'
         file_res_sample = open(RES_SAMPLE_FILE_ADDR, 'a')
@@ -1171,6 +1172,7 @@ class MSA(MultipleSeqAlignment):
         print('residue to match from the position {} in r1 is {}\n'.format(sample_pos_pos, res_to_match), file=file_res_sample)
         file_res_sample.close()
         """
+        # get the matching residues in the second sequence
         matchingResids = np.array(np.where(seq == res_to_match)).reshape(-1,)
         
         """
@@ -1210,7 +1212,7 @@ class MSA(MultipleSeqAlignment):
             if len(matchingResids) < 1:
                 raise Exception('The delete function malfunctioned and deleted too many things. Matching array is empty.')
             sample_pos_neg = np.random.choice(matchingResids, size=1)
-        elif len(matchingResids) > 0:
+        elif len(matchingResids) > -1:
             sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
         else:
             raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')
@@ -1229,7 +1231,7 @@ class MSA(MultipleSeqAlignment):
         conservations = self.get_conservation(self.full_msa)[aligned_positions]
         norm_conservations = conservations/np.sum(conservations)
         sample_pos_pos = np.random.choice(aligned_positions, p = norm_conservations, size=num_pairs, replace=False)
-        seq = np.array(r1.seq)
+        seq = np.array(r2.seq)
         # for all triplicates
         
         
@@ -1300,7 +1302,7 @@ class MSA(MultipleSeqAlignment):
             cons = 1 / (self.calculate_entropy(self.full_msa[:, sample_pos_pos]) + 1)
             pos_anchor = self.align_pos_to_seq_pos(sample_pos_pos, seq_r1)
             pos_positive = self.align_pos_to_seq_pos(sample_pos_pos, seq_r2)
-            pos_negative = self.align_pos_to_seq_pos(sample_pos_neg, seq_r1)
+            pos_negative = self.align_pos_to_seq_pos(sample_pos_neg, seq_r2)
             return [(pos_anchor, pos_positive, pos_negative, cons)]
         else:
             pos_pairs = []
@@ -1311,7 +1313,7 @@ class MSA(MultipleSeqAlignment):
                 # print(cons)
                 pos_anchor = self.align_pos_to_seq_pos(pos_pos, seq_r1)
                 pos_positive = self.align_pos_to_seq_pos(pos_pos, seq_r2)
-                pos_negative = self.align_pos_to_seq_pos(pos_neg, seq_r1)
+                pos_negative = self.align_pos_to_seq_pos(pos_neg, seq_r2)
                 pos_pairs.append((pos_anchor, pos_positive, pos_negative, cons))
             return pos_pairs
         

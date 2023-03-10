@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --time=7-00:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --partition=rbaltman
+#SBATCH --partition=rbaltman,gpu,bioe
 #SBATCH --gres gpu:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=tartici@stanford.edu
-#SBATCH --job-name=c10_P&M
+#SBATCH --job-name=c13_P&M
 #SBATCH --mem=100G
 
 sleep 1
@@ -33,9 +33,9 @@ echo $DATA_DIR
 
 #python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Mar4_alp_v1_nonTied_onlyCos_curric --epochs 1000 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/50stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/50err.txt
 
-python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Feb28_alp_v5_nonTiedWeights_L1mean.pt --env_radius 10 --run_name contr_Mar4_alp_v1_nonTied_onlyCos_curric --epochs 1000 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/50stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/50err.txt
+python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/collapse_base.pt --env_radius 10 --run_name contr_Mar9_alp_v1_nonTiedWeights_onlyCos_curric --epochs 2300 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/53stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/53err.txt
 
 #python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/pretrain.py --data_dir /scratch/users/aderry/collapse/datasets/cdd_train_dataset --val_dir /scratch/users/aderry/collapse/datasets/pfam_val_dataset_msa --env_radius 10 --run_name contr_Feb28_alp_v1_nonTiedWeights_stdstd_stdmean --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Feb27_alp_v1.pt --epochs 404 >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/43stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/realPretrainOutput/43err.txt
 
 
-python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/msp_train.py --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Mar4_alp_v1_nonTied_onlyCos_curric.pt --data_dir=/scratch/users/aderry/atom3d/lmdb/MSP/splits/split-by-sequence-identity-30/data --finetune >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/MSPoutput/10stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/MSPoutput/10err.txt
+python /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/scripts/msp_train.py --checkpoint /oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/checkpoints/contr_Mar9_alp_v1_nonTiedWeights_onlyCos_curric.pt --data_dir=/scratch/users/aderry/atom3d/lmdb/MSP/splits/split-by-sequence-identity-30/data --finetune >/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/MSPoutput/13stdout.txt 2>/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/MSPoutput/13err.txt
