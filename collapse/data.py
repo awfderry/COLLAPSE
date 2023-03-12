@@ -186,7 +186,7 @@ def process_pdb(pdb_file, chain=None, include_hets=True):
 #added projection_hidden_size
 def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_base.pt'), train=False, device='cpu', use_momentum = True):
     
-    dummy_graph = torch.load(os.path.join(DATA_DIR, 'dummy_graph.pt'))
+    dummy_graph = torch.load('/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/dummy_graph.pt')
     model = BYOL(
         CDDModel(out_dim=512, scatter_mean=True, attn=False, chain_ind=False),
         projection_size=512,

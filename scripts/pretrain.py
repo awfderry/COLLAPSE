@@ -185,7 +185,7 @@ def main():
     #train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
     val_dataset = load_dataset(args.val_dir, 'lmdb', transform=CDDTransform(p_hard_negative=1, single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
     
-    dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
+    dummy_graph = torch.load('/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/data/dummy_graph.pt')
     
     model = BYOL(
         CDDModel(out_dim=args.dim, scatter_mean=True, attn=False, chain_ind=False),

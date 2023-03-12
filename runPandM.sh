@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --time=2-00:00:00
+#SBATCH --time=7-00:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --partition=rbaltman,gpu,bioe
+#SBATCH --partition=rbaltman
 #SBATCH --gres gpu:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=tartici@stanford.edu
-#SBATCH --job-name=c13_P&M
+#SBATCH --job-name=c15_P&M
 #SBATCH --mem=100G
 
 sleep 1
