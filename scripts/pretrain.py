@@ -272,7 +272,8 @@ def main():
     for epoch in tqdm(range(args.start_epoch, args.epochs)):
         # adjust the difficulty of negative examples. make the harder as training progresses
         percent_prog = (epoch - args.start_epoch)/epochNum
-        p_hard_neg = np.tanh(4*percent_prog)
+        #p_hard_neg = np.tanh(4*percent_prog)
+        p_hard_neg = 0.8 + 0.2*percent_prog
         
         train_dataset = load_dataset(args.data_dir, 'lmdb', transform=CDDTransform(p_hard_negative=p_hard_neg, single_chain=True, include_af2=False, env_radius=args.env_radius, num_pairs_sampled=4))
         if args.parallel:
