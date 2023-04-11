@@ -11,7 +11,7 @@ from collapse.data import CDDTransform, NoneCollater
 from atom3d.datasets import load_dataset
 from torch_geometric.nn import DataParallel
 from torch.utils.data import DataLoader
-from torch_geometric.loader import DataListLoader
+from torch_geometric.loader import DataLoader as PTGLoader
 
 import os
 import argparse
@@ -54,6 +54,21 @@ args = parser.parse_args()
 NUM_GPUS = torch.cuda.device_count()
 print(f'using {NUM_GPUS} GPUs')
 
+@torch.no_grad()
+def eval_prosite(loader, model, device):
+    model.eval()
+    
+    all_emb = []
+    labels = []
+    for g, label in tqdm(loader, desc='Embedding Prosite'):
+        g = g.to(device)
+        embeddings, _ = model.online_encoder(g, return_projection=False)
+        all_emb.append(embeddings.squeeze().cpu().numpy())
+        labels.append(label[0])
+
+    all_emb = np.stack(all_emb)
+    acc = train_cls(all_emb, labels)
+    return acc
 
 @torch.no_grad()
 def evaluate(loader, model, device):
@@ -103,7 +118,7 @@ def main():
     dummy_graph = torch.load(os.path.join(os.environ["DATA_DIR"], 'dummy_graph.pt'))
     
     model = BYOL(
-        CDDModel(out_dim=args.dim, scatter_mean=True, attn=False, chain_ind=False),
+        CDDModel(out_dim=args.dim, scatter_mean=False, attn=True, chain_ind=False),
         projection_size=512,
         dummy_graph=dummy_graph,
         hidden_layer=-1,
@@ -113,13 +128,13 @@ def main():
     device_ids = [i for i in range(torch.cuda.device_count())]
 
     opt = torch.optim.Adam(params=model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=5000, eta_min=1e-6)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=2000, eta_min=1e-6)
 
     if args.checkpoint != "":
         cpt = torch.load(args.checkpoint, map_location=device)
-        model.load_state_dict(cpt['model_state_dict'])
+        model.load_state_dict(cpt['model_state_dict'], strict=False)
         # scheduler.load_state_dict(cpt['scheduler_state_dict'])
-        opt.load_state_dict(cpt['optimizer_state_dict'])
+        # opt.load_state_dict(cpt['optimizer_state_dict'])
         args.start_epoch = cpt['epoch']
         
     if args.parallel:
@@ -130,6 +145,9 @@ def main():
     else:
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True, drop_last=True)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, collate_fn=NoneCollater(), pin_memory=True, persistent_workers=True)
+    
+    prosite_dataset = load_dataset('../data/datasets/prosite_val_subset_reduced', 'lmdb', transform=lambda x: (x['graph'], x['label']))
+    prosite_loader = PTGLoader(prosite_dataset, batch_size=1, shuffle=True)
           
     model.train()
     
@@ -153,6 +171,11 @@ def main():
                     torch.cuda.empty_cache()
                     print('Out of Memory error!', flush=True)
                     continue
+            if np.isnan(loss.item()):
+                print('----------------------------')
+                print('NaNs encountered!!')
+                print(meta)
+                continue
             # print(loss)
             opt.zero_grad()
             loss.backward()
@@ -163,7 +186,8 @@ def main():
             # print(f'Iteration {i}: Loss: {loss.item()}')
         
         val_loss, acc, std, pos_cosine, neg_cosine = evaluate(val_loader, model, device)
-        wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine})
+        prosite_acc = eval_prosite(prosite_loader, model, device)
+        wandb.log({'epoch': epoch, 'val_loss': val_loss, 'aa_knn_acc': acc, 'std': std, 'pos_cosine': pos_cosine, 'neg_cosine': neg_cosine, 'prosite_acc': prosite_acc})
         
         # save your improved network
         if args.parallel:
@@ -178,7 +202,7 @@ def main():
                     # 'scheduler_state_dict': scheduler.state_dict(),
                     'epoch': epoch
                     }, f'../data/checkpoints/{args.run_name}.pt')
-        # scheduler.step(val_loss)
+        scheduler.step()
 
 def train_cls(x, y):
     # mod = LogisticRegression(max_iter=100, solver="liblinear")

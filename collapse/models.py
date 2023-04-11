@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch_scatter
 from torch_geometric.utils import softmax
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
+from torch_geometric.nn import GlobalAttention
 from gvp import GVP, GVPConvLayer, LayerNorm
 
 
@@ -77,6 +78,8 @@ class CDDModel(nn.Module):
         
         if self.attn:
             self.attn_nn = nn.Linear(out_dim, 1)
+            self.out_nn = nn.Linear(out_dim, out_dim)
+            self.global_attn = GlobalAttention(self.attn_nn, self.out_nn)
             
     
     def forward(self, batch, no_pool=False):
@@ -107,10 +110,10 @@ class CDDModel(nn.Module):
 
         elif self.scatter_mean: 
             out = torch_scatter.scatter_mean(out, batch_id, dim=0)
+            
         elif self.attn: 
-            attn = self.attn_nn(out).view(-1, 1)
-            attn = softmax(attn, batch_id)
-            out = torch_scatter.scatter_mean(attn * out, batch_id, dim=0)
+            out = self.global_attn(out, batch_id)
+            out = torch.tanh(out)
 
         return out
    

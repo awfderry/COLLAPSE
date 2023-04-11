@@ -157,7 +157,7 @@ class BYOL(nn.Module):
         dummy_graph,
         hidden_layer = -1,
         projection_size = 512,
-        projection_hidden_size = 4096,
+        projection_hidden_size = 1024,
         augment_fn = None,
         augment_fn2 = None,
         moving_average_decay = 0.99,

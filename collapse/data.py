@@ -182,10 +182,10 @@ def process_pdb(pdb_file, chain=None, include_hets=True):
         atoms = atoms[atoms.resname.isin(atom_info.aa)].reset_index(drop=True)
     return atoms
 
-def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_base.pt'), train=False, device='cpu'):
+def initialize_model(checkpoint=os.path.join(DATA_DIR, 'checkpoints/collapse_base.pt'), train=False, device='cpu', attn=False):
     dummy_graph = torch.load(os.path.join(DATA_DIR, 'dummy_graph.pt'))
     model = BYOL(
-        CDDModel(out_dim=512, scatter_mean=True, attn=False, chain_ind=False),
+        CDDModel(out_dim=512, scatter_mean=(not attn), attn=attn, chain_ind=False),
         projection_size=512,
         projection_hidden_size=1024,
         dummy_graph=dummy_graph,
@@ -349,6 +349,24 @@ def nearest_residue(df, center):
 Transforms and Pytorch Datasets for various situations
 """
 
+class SCOPPairDataset(Dataset):
+    
+    def __init__(self, data_dir):
+        self.data_dir = data_dir
+        self.all_files = os.listdir(data_dir)
+        self.idx_to_fname = dict(zip(range(len(self.all_files)), self.all_files))
+        
+    def __len__(self):
+        return len(self.all_files)
+    
+    def __getitem__(self, idx):
+        fname = self.idx_to_fname[idx]
+        with open(os.path.join(self.data_dir, fname), 'rb') as f:
+            item = pickle.load(f)
+        graph1, graph2 = item.pop('graphs')
+        return (graph1, graph2), item
+        
+
 class CDDTransform(object):
     '''
     Transforms LMDB dataset entries to featurized graphs. Returns a `torch_geometric.data.Data` graph
@@ -372,9 +390,9 @@ class CDDTransform(object):
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
         except Exception as e:
-            print(e)
-            print('failed for MSA', cdd_id)
-            print(msa)
+            # print(e)
+            # print('failed for MSA', cdd_id)
+            # print(msa)
             return [((None, None), None)]
         
         msa.pair_ids = [r.id for r in (seq_r1, seq_r2)]
@@ -803,32 +821,32 @@ class SiteDataset(IterableDataset):
                 print('skipping PDB', pdb)
                 continue
             atom_df = process_pdb(fp, chain=chain)
+            kd_tree = scipy.spatial.cKDTree(atom_df[['x', 'y', 'z']].to_numpy())
 
             for r, (site, _, locs, source, desc) in df.iterrows():
                 for resnum in locs:
                     if resnum not in atom_df.residue.tolist():
                         continue
                     try:
-                        graph = self._extract_env(atom_df.copy(), resnum)
+                        graph = self._extract_env(atom_df.copy(), resnum, kd_tree)
                     except KeyError:
                         print(pdb_chain, desc)
                         continue
                     if graph is None:
                         continue
                     yield graph, pdb_chain, source, desc
-
-    def _extract_env(self, df, resnum):
+    
+    def _extract_env(self, df, resnum, kd_tree):
         df = df.reset_index()
-        kd_tree = scipy.spatial.cKDTree(df[['x', 'y', 'z']].to_numpy())
         rows = df['residue'] == int(resnum)
         res_df = df[rows]
         
         resid = res_df['resname'].apply(atom_info.aa_to_letter).iloc[0] + str(resnum)
-        # center = sample_functional_center(res_df, resid, self.train_mode)
-        try:
-            center = res_df[res_df['name'] == 'CA'][['x', 'y', 'z']].astype(np.float32).to_numpy()[0]
-        except:
-            return None
+        center = sample_functional_center(res_df, resid, self.train_mode)
+        # try:
+        #     center = res_df[res_df['name'] == 'CA'][['x', 'y', 'z']].astype(np.float32).to_numpy()[0]
+        # except:
+        #     return None
 
         pt_idx = kd_tree.query_ball_point(center, r=self.env_radius, p=2.0)
         df_env = df.iloc[pt_idx, :]
@@ -846,6 +864,53 @@ class SiteDataset(IterableDataset):
             total += len(row[2])
         return total
 
+class SiteNNDataset(IterableDataset):
+    '''
+    Yields graphs from a dictionary of xyz coordinates defining PDB sites, plus neighbors within 3.5A.
+    '''
+    
+    def __init__(self, dataset, pdb_dir, train_mode=True, env_radius=10.0, device='cpu'):
+        self.dataset = pd.read_csv(dataset, converters={'locs': lambda x: eval(x)})
+        self.pdb_dir = pdb_dir
+        self.env_radius = env_radius
+        self.device = device
+        self.train_mode = train_mode
+    
+    def __iter__(self):
+        for pdb_chain, df in self.dataset.groupby('pdb'):
+            pdb = pdb_chain[:4]
+            chain = pdb_chain[4:]
+            fp = os.path.join(self.pdb_dir, pdb + '.pdb.gz')
+            if not os.path.exists(fp):
+                print('skipping PDB', pdb)
+                continue
+            atom_df = process_pdb(fp, chain=chain)
+            kd_tree = scipy.spatial.cKDTree(atom_df[['x', 'y', 'z']].to_numpy())
+
+            for r, (site, _, locs, source, desc) in df.iterrows():
+                resids = self._get_neighbors(atom_df.copy(), kd_tree, locs)
+                for resid in resids:
+                    graph = extract_env_from_resid(atom_df.copy(), (chain, resid), env_radius=self.env_radius, ca_center=False, train_mode=self.train_mode)
+                    if graph is None:
+                        continue
+                    graph.resid = resid
+                    yield graph, pdb_chain, source, desc
+    
+    def _get_neighbors(self, df, kd_tree, resnums):
+        # df_ca = df[df.name=='CA'].reset_index()
+        df = df.reset_index()
+        df_centers = df[df.residue.isin(resnums)]
+        pt_idx = kd_tree.query_ball_point(df_centers[['x', 'y', 'z']].to_numpy(), r=3.5, p=2.0)
+        pt_idx = [pt for x in pt_idx for pt in x]
+        df_nn = df.iloc[pt_idx, :]
+        nn_resids = (df_nn['resname'].apply(atom_info.aa_to_letter) + df_nn['residue'].astype(str)).unique()
+        return nn_resids
+    
+    # def __len__(self):
+    #     total = 0
+    #     for r, row in self.dataset.iterrows():
+    #         total += len(row[2])
+    #     return total
 
 class ESMDataset(IterableDataset):
     '''

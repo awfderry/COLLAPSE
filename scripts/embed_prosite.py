@@ -29,7 +29,7 @@ with open(f'../data/prosite_data_{args.site_name}.json') as f:
 dataset = SiteCoordDataset(dataset, pdb_dir, env_radius=10.0)
 loader = DataLoader(dataset, batch_size=4, shuffle=False, num_workers=0)
 
-model = initialize_model(args.checkpoint, device=device)
+model = initialize_model(args.checkpoint, device=device, train=False, attn=False)
 
 loader = DataLoader(dataset, batch_size=1, shuffle=False)
 

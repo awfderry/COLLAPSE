@@ -94,7 +94,7 @@ def train(args, device, log_dir, rep=None):
         dummy_graph.edge_v = torch.randn_like(dummy_graph.edge_v)
         break
         
-    gnn_model = initialize_model(args.checkpoint, device=device, train=True)
+    gnn_model = initialize_model(args.checkpoint, device=device, train=True, attn=False)
     ff_model = MLPPaired(args.hidden_dim, args.hidden_dim).to(device)
 
     best_val_loss = 999
@@ -103,6 +103,7 @@ def train(args, device, log_dir, rep=None):
     if args.finetune:
         params = [x for x in gnn_model.parameters()] + [x for x in ff_model.parameters()]
     else:
+        gnn_model.eval()
         for param in gnn_model.parameters():
             param.requires_grad = False
         params = ff_model.parameters()
@@ -116,7 +117,7 @@ def train(args, device, log_dir, rep=None):
         train_loss = train_loop(epoch, gnn_model, ff_model, train_loader, criterion, optimizer, device)
         print('validating...')
         val_loss, auroc, auprc, _, _ = test(gnn_model, ff_model, val_loader, criterion, device)
-        if auroc > best_val_auroc:
+        if val_loss < best_val_loss:
             torch.save({
                 'epoch': epoch,
                 'gcn_state_dict': gnn_model.state_dict(),
@@ -124,6 +125,7 @@ def train(args, device, log_dir, rep=None):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': train_loss,
             }, os.path.join(log_dir, f'best_weights_rep{rep}.pt'))
+            best_val_loss = val_loss
             best_val_auroc = auroc
         elapsed = (time.time() - start)
         print('Epoch: {:03d}, Time: {:.3f} s'.format(epoch, elapsed))

@@ -4,7 +4,7 @@ COLLAPSE (COmpressed Latents Learned from Aligned Protein Structural Environment
 The repo is organized as follows:
 
   - `./collapse`: package source code and core functionality
-  - `./scripts`: Python scripts and notebooks used in our preprint.
+  - `./scripts`: Python scripts and notebooks used in our paper.
   - `./data`: datasets, model checkpoints, etc.
 
 <p align="center"><img src="collapse_schematic.png" width="500"></p>

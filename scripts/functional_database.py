@@ -43,9 +43,9 @@ with torch.no_grad():
         all_sources.append(source[0])
         all_resids.append(g.resid[0])
      
-print('Saving...')   
+print('Saving...')
 all_emb = np.stack(all_emb)
-outdata = {'embeddings': all_emb, 'pdbs': all_pdb, 'resids': all_resids, 'sites': all_sites, 'sources': all_sources}
+outdata = {'embeddings': all_emb.copy(), 'pdbs': all_pdb, 'resids': all_resids, 'sites': all_sites, 'sources': all_sources}
 # with open(args.outfile, 'wb') as f:
 #     pickle.dump(outdata, f)
 
@@ -59,15 +59,15 @@ quants = [1-p for p in pvals]
 mean_cos = []
 std_cos = []
 site_quants = []
-for i, emb in enumerate(tqdm(all_emb)):
+for i in tqdm(range(len(all_emb))):
+    emb = all_emb[i]
     restype = atom_info.letter_to_aa(all_resids[i][0])
     if restype == 'UNK':
         continue
     ref_emb = restype_to_emb[restype]
-    emb = emb[np.newaxis, :]
     # print(emb.shape)
     # print(ref_emb.shape)
-    cosines = fastdist.cosine_matrix_to_matrix(emb, ref_emb)[0]
+    cosines = fastdist.cosine_matrix_to_matrix(emb[np.newaxis, :], ref_emb)[0]
     
     quantiles = np.quantile(cosines, quants)
     # all_cos.extend(cos_list)

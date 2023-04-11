@@ -34,9 +34,6 @@ def main(args):
     if len(pdb_ids[0].split('_')[0]) > 4:
         af_flag = True
     
-    print(pdb_ids[:5])
-    print(len(set([p[:4] for p in pdb_ids])))
-    
     pdb_meta = pd.read_csv(args.metadata, index_col=0, sep=None)
     
     if query_pdb not in pdb_meta.index:
@@ -96,7 +93,9 @@ def main(args):
     
     cols = ['Description', 'Classification', 'Keywords', 'Method', 'Uniprot', 'Citation']
     
-    results[cols] = results['PDB'].apply(lambda x: pdb_meta.loc[x[:4], cols])
+    # results[cols] = results['PDB'].apply(lambda x: pdb_meta.loc[x[:4], cols])
+    results['pdb4'] = results['PDB'].str[:4]
+    results = pd.merge(results, pdb_meta.loc[:, cols], left_on='pdb4', right_index=True, how='left')
     
     if args.verbose:
         print(results)
