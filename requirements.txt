@@ -6,5 +6,5 @@ matplotlib
 seaborn
 jupyterlab
 scipy
-sklearn
+scikit-learn
 wandb
