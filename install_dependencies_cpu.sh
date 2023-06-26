@@ -5,13 +5,10 @@
 #conda activate collapse
 
 # Install conda packages
-conda install pytorch==1.11.0 -c pytorch
+conda install pytorch==1.13.1 -c pytorch
 
-export TORCH=1.11.0
-pip install torch-scatter -f https://data.pyg.org/whl/torch-${TORCH}+cpu.html
-pip install torch-sparse -f https://data.pyg.org/whl/torch-${TORCH}+cpu.html
-pip install torch-cluster -f https://data.pyg.org/whl/torch-${TORCH}+cpu.html
-pip install torch-geometric
+conda install pyg -c pyg
+pip install torch_scatter torch_sparse torch_cluster -f https://data.pyg.org/whl/torch-1.13.0+cpu.html
 
 conda install -c pytorch faiss-cpu
 
