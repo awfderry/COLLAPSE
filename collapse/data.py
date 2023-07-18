@@ -433,6 +433,8 @@ class CDDTransform(object):
         
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
+            # trying to sample one more pair for easy negatives
+            r3, r4, seq_r3, seq_r4 = msa.sample_record_pair()
         except Exception as e:
             # print('failed for MSA', cdd_id)
             print(e)
@@ -441,11 +443,14 @@ class CDDTransform(object):
             return [((None, None, None), None)]
         
         pair_ids = [r.id for r in (seq_r1, seq_r2)]
+        pair_ids_easyNeg = [r_en.id for r_en in (seq_r3, seq_r4)]
         
         df1, df2 = self._process_dataframes(elem['atoms'], pair_ids)
+        df3, df4 = self._process_dataframes(elem['atoms'], pair_ids_easyNeg)
         
         try:
             pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
+            pair_resids_easyNeg = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids_easyNeg]
         except:
             
             PATH_FCDD = "/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/failingCDD"
@@ -497,6 +502,8 @@ class CDDTransform(object):
         if posPos >= len(pair_resids[1]):
             raise Exception('posPos {} but len(pair_resids[1] = {}'.format(posPos, len(pair_resids[1])))
         
+        # error handling here. If for some reason, posNeg is larger than the number of aligned residues, reposition the negative residue correctly, no closer than 20 amino acids to the anchor position
+        # trying to make sure negative example is not closer than 20 amino acids to the negative example
         POS_NEG_SEQ_DIST = 20
         if posNeg >= len(pair_resids[1]):
             if posPos > POS_NEG_SEQ_DIST:
@@ -1213,6 +1220,8 @@ class MSA(MultipleSeqAlignment):
                 raise Exception('The delete function malfunctioned and deleted too many things. Matching array is empty.')
             sample_pos_neg = np.random.choice(matchingResids, size=1)
         elif len(matchingResids) > -1:
+            # sampling an easy negative when there are multiple aligned locations
+            # ideally you want to do this from a totally different protein
             sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
         else:
             raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')
