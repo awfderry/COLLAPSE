@@ -434,7 +434,7 @@ class CDDTransform(object):
         try:
             r1, r2, seq_r1, seq_r2 = msa.sample_record_pair()
             # trying to sample one more pair for easy negatives
-            r3, r4, seq_r3, seq_r4 = msa.sample_record_pair()
+            _, r4, seq_r3, seq_r4 = msa.sample_record_pair()
         except Exception as e:
             # print('failed for MSA', cdd_id)
             print(e)
@@ -442,15 +442,14 @@ class CDDTransform(object):
             print(msa)
             return [((None, None, None), None)]
         
-        pair_ids = [r.id for r in (seq_r1, seq_r2)]
-        pair_ids_easyNeg = [r_en.id for r_en in (seq_r3, seq_r4)]
+        pair_ids = [r.id for r in (seq_r1, seq_r2, seq_r3, seq_r4)]
         
-        df1, df2 = self._process_dataframes(elem['atoms'], pair_ids)
-        df3, df4 = self._process_dataframes(elem['atoms'], pair_ids_easyNeg)
+        
+        df1, df2 = self._process_dataframes(elem['atoms'], pair_ids[0:2])
+        df3, df4 = self._process_dataframes(elem['atoms'], pair_ids[2:4])
         
         try:
             pair_resids = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids]
-            pair_resids_easyNeg = [elem['residue_ids'][pdb_idx[p]] for p in pair_ids_easyNeg]
         except:
             
             PATH_FCDD = "/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/failingCDD"
@@ -469,7 +468,7 @@ class CDDTransform(object):
        
         
         try:
-            graphs_list = [self._process_graphs(*triplicate, df1, df2, pair_ids, pair_resids) for triplicate in pos_triplicates]
+            graphs_list = [self._process_graphs(*triplicate, df1, df2, df3, df4, pair_ids, pair_resids) for triplicate in pos_triplicates]
         except:
             print(cdd_id)
             print(pair_ids)
@@ -483,7 +482,8 @@ class CDDTransform(object):
         
         return graphs_list
     
-    def _process_graphs(self, posAnc, posPos, posNeg, cons, df1, df2, pair_ids, pair_resids):
+    def _process_graphs(self, posAnc, posPos, posNeg, cons, df1, df2, df3, df4, pair_ids, pair_resids):
+        # this is taking one triplicate at a time, not a list of triplicates
          
         PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/pairResids.txt'
         """
@@ -513,9 +513,38 @@ class CDDTransform(object):
             else:
                 posNeg = len(pair_resids[1]) - 1
             #raise Exception('posPos {} but len(pair_resids[0] = {}'.format(posNeg, len(pair_resids[0])))
+        if posNeg == -1:
+            # this means you're picking an easy negative example
+            # from a random MSA, either seq 3 or seq 4
+            # pick either 3 or 4
+            choices_for_EN = [3, 4]
+            # Randomly pick either 3 or 4
+            picked_chain = np.random.choice(choices_for_EN)
+            
+            if picked_chain == 3:
+                # pick a position from them
+                posNeg = len(pair_resids[2]) // 2
+                # assign the relevant dataframe as df_easyneg
+                df_EN = df3
+            else:
+                posNeg = len(pair_resids[3]) // 2
+                df_EN = df4
+            
+            # assign pair_resids[2] or pair_resids[3] as pair_resid_EN
+            pair_resid_EN = pair_resids[picked_chain-1]
+            # assign pair_ids[2] or pair_ids[3] as pair_id_EN
+            pair_id_EN = pair_ids[picked_chain-1]
+            
+        else:
+            # repeat the things above but make it 1
+            df_EN = df2
+            pair_resid_EN = pair_resids[1]
+            pair_id_EN = pair_ids[1]
+            
+        
             
         try:
-            residAnc, residPos, residNeg = pair_resids[0][posAnc], pair_resids[1][posPos], pair_resids[1][posNeg]
+            residAnc, residPos, residNeg = pair_resids[0][posAnc], pair_resids[1][posPos], pair_resid_EN[posNeg]
         except:
             PAIR_RESID_FILE_ADDR = '/oak/stanford/groups/rbaltman/alptartici/branch_contrastive/outputContrPretrain/pairResids.txt'
             file_pair_resid = open(PAIR_RESID_FILE_ADDR, 'a')
@@ -526,16 +555,16 @@ class CDDTransform(object):
             file_pair_resid.close()
             raise Exception('triplicate selection is not working in data.py')
        
-        chain1, chain2 = pair_ids[0][-1], pair_ids[1][-1]
+        chain1, chain2, chain3 = pair_ids[0][-1], pair_ids[1][-1], pair_id_EN[-1]
         
         graphAnc = extract_env_from_resid(df1.copy(), (chain1, residAnc), self.env_radius, train_mode=True)
         graphPos = extract_env_from_resid(df2.copy(), (chain2, residPos), self.env_radius, train_mode=True)
-        graphNeg = extract_env_from_resid(df2.copy(), (chain2, residNeg), self.env_radius, train_mode=True)
+        graphNeg = extract_env_from_resid(df_EN.copy(), (chain3, residNeg), self.env_radius, train_mode=True)
         
         metadata = {
             'res_labels': (atom_info.aa_to_label(residAnc[0]), atom_info.aa_to_label(residPos[0]), atom_info.aa_to_label(residNeg[0])),
             'res_ids': (residAnc, residPos, residNeg),
-            'pdb_ids': pair_ids,
+            'pdb_ids': pair_ids[0:2],
             # 'cdd_id': cdd_id,
             'conservation': cons
         }
@@ -1209,20 +1238,34 @@ class MSA(MultipleSeqAlignment):
         #########################    
             
         # randomly deciding whether we will be sampling a hard negative example, which is when the residue type is the same  
-        diff_random = np.random.rand()
-        sample_hard_neg = diff_random < p_hard_negative 
+        
+        diff_random_arr = np.random.rand(2)
+
+        # Get the number of array elements that are greater than p_hard_negative
+        num_greater = np.sum(diff_random_arr > p_hard_negative)
+        
+        sample_hard_neg = num_greater == 1
+        sample_very_hard_neg = num_greater == 2
+        
+        
         
         # if there are multiple residues of the same kind and if we were assigned to choose a hard negative, choose hard negative    
-        if len(matchingResids) > 1 and sample_hard_neg:
+        if len(matchingResids) > 1 and sample_very_hard_neg:
+            # very hard negative example. Second chain and the same kind of amino acid
             # make sure you don't pick the same residue
             matchingResids = np.delete(matchingResids, np.where(matchingResids==sample_pos_pos))
             if len(matchingResids) < 1:
                 raise Exception('The delete function malfunctioned and deleted too many things. Matching array is empty.')
             sample_pos_neg = np.random.choice(matchingResids, size=1)
+        elif sample_hard_neg:
+            # hard negative - also second chain but at a random position
+            sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
         elif len(matchingResids) > -1:
             # sampling an easy negative when there are multiple aligned locations
             # ideally you want to do this from a totally different protein
-            sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
+            #sample_pos_neg = np.random.choice(self.get_aligned_positions_pairwise(r1, r2, seq_r1, seq_r2), size=1, replace=False)
+            # return the position to be -1 to signal that you want to pick a position from a different MSA to make sure it really is an easy negative
+            sample_pos_neg = -1
         else:
             raise Exception('Problem with sampling. There should be at least one residue that matches the residue in r1.')
             
