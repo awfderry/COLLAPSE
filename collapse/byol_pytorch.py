@@ -227,3 +227,70 @@ class BYOL(nn.Module):
 
         loss = (loss_one + loss_two) * loss_weight
         return loss.mean()
+
+    
+# this is the new BYOL for contrastive
+
+class BYOL_Contrastive(nn.Module):
+    def __init__(
+        self,
+        net,
+        dummy_graph,
+        hidden_layer = -1,
+        projection_size = 512,
+        projection_hidden_size = 1024,
+        augment_fn = None,
+        augment_fn2 = None,
+        moving_average_decay = 0.99,
+        use_momentum = True,
+        extract_center=True, 
+        dense=False
+    ):
+        super().__init__()
+        self.net = net
+
+        self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, dense=dense)
+
+        self.use_momentum = use_momentum
+        self.target_encoder = None
+        self.target_ema_updater = EMA(moving_average_decay)
+
+        self.online_predictor = MLP(projection_size, projection_size, projection_hidden_size)
+        self.loss = nn.TripletMarginWithDistanceLoss(distance_function=lambda x, y: 1.0 - F.cosine_similarity(x, y))
+
+        # get device of network and make wrapper same device
+        device = get_module_device(net)
+        self.to(device)
+
+        # send a mock image tensor to instantiate singleton parameters
+        self.forward(dummy_graph, dummy_graph, dummy_graph, 1)
+
+    @singleton('target_encoder')
+    def _get_target_encoder(self):
+        target_encoder = copy.deepcopy(self.online_encoder)
+        set_requires_grad(target_encoder, False)
+        return target_encoder
+
+    def reset_moving_average(self):
+        del self.target_encoder
+        self.target_encoder = None
+
+    def update_moving_average(self, current_epoch):
+        assert self.use_momentum, 'you do not need to update the moving average, since you have turned off momentum for the target encoder'
+        assert self.target_encoder is not None, 'target encoder has not been created yet'
+        update_moving_average(self.target_ema_updater, self.target_encoder, self.online_encoder, current_epoch)
+
+    def forward(
+        self,
+        graph_anchor, graph_pos, graph_neg,
+        return_embedding=False
+    ):
+        # assert not (self.training and x.shape[0] == 1), 'you must have greater than 1 sample when training, due to the batchnorm in the projection layer'
+
+        anc_emb = self.online_encoder(graph_anchor, return_projection=False)[0]
+        pos_emb = self.online_encoder(graph_pos, return_projection=False)[0]
+        neg_emb = self.online_encoder(graph_neg, return_projection=False)[0]
+        if return_embedding:
+            return anc_emb, pos_emb, neg_emb
+
+        return self.loss(anc_emb, pos_emb, neg_emb)

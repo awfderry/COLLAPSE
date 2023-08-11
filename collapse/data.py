@@ -464,6 +464,200 @@ class EmbedTransform(object):
         elem['embeddings'] = outdata['embeddings']
         return elem
 
+class FoldseekDataset(Dataset):
+    def __init__(self, msa_data, lookup_file, pdb_lmdb_dataset, num_positions=1, env_radius=10.0):
+        self.num_positions = num_positions
+        self.env_radius = env_radius
+        self.msa_data = load_dataset(msa_data, 'lmdb')
+        # self.idx_to_key = dict(zip(range(len(msa_dict)), len(msa_dict.keys())))
+        self.lookup_to_pdb, _ = self.get_lookup(lookup_file)
+        self.pdb_lmdb_dataset = load_dataset(pdb_lmdb_dataset, 'lmdb')
+        
+    def __getitem__(self, idx):
+        item = self.msa_data[idx]
+        try: 
+            (idx1, pos1), (idx2, pos2) = self.sample(item['msa'])
+        except:
+            # print('sampling failed for', item['id'])
+            return [((None, None), None)]
+        try:
+            (g1, pdb1, r1), (g2, pdb2, r2) = self.process_pdb(idx1, pos1), self.process_pdb(idx2, pos2)
+        except:
+            # print('processing failed for', item['id'])
+            # print(e)
+            return [((None, None), None)]
+        # print('processing complete')
+        metadata = {'pdb_ids': (pdb1, pdb2), 'res_ids': (r1, r2), 'res_labels': (atom_info.aa_to_label(r1[0]), atom_info.aa_to_label(r2[0])), 'db_key': item['id']}
+        return [((g1, g2), metadata)]
+        
+    def __len__(self):
+        return len(self.msa_data)
+    
+    def get_lookup(self, lookup_file):
+        pdb_lookup = pd.read_csv(lookup_file, sep='\t', index_col=0, header=None)
+        pdb_lookup['name'] = pdb_lookup[1].str.replace('.cif.gz', '')
+        idx_to_pdb = dict(pdb_lookup['name'])
+        pdb_to_idx = {v:k for k,v in idx_to_pdb.items()}
+        return idx_to_pdb, pdb_to_idx
+
+    def get_valid_positions(self, row):
+        query_start = int(row['qStart'])
+        target_start = int(row['tStart'])
+        cigar = row['alnCigar']
+        query, target = query_start, target_start
+        matches = []
+        for ct, action in re.findall('([0-9]*)([IDMP])', cigar):
+            ct = int(ct)
+
+            if action == 'D':
+                target += ct
+            elif action == 'I':
+                query += ct
+            elif action == 'M':  # use only Perfect matches
+                matches += [(query + i, target + i) for i in range(ct)]
+                query += ct
+                target += ct
+        return pd.DataFrame(matches, columns=['q', 't'])
+    
+    def sample(self, df):
+        pair_rows = df.sample(n=2, weights=1 - df['seqIdentity'].astype(float))
+        row1, row2 = pair_rows.iloc[0], pair_rows.iloc[1]
+        idx1, idx2 = int(row1['ttargetID']), int(row2['ttargetID'])
+        p1, p2 = self.get_valid_positions(row1), self.get_valid_positions(row2)
+        correspondences = pd.merge(p1, p2, how='inner', on='q').to_numpy()
+        rand = np.random.randint(correspondences.shape[0], size=self.num_positions)
+        q, pos1, pos2 = correspondences[rand][0]
+        return (idx1, pos1), (idx2, pos2)
+    
+    def process_pdb(self, idx, pos):
+        pdbc = self.lookup_to_pdb[idx]
+        pdb, chain = pdbc.split('_')
+        item = self.pdb_lmdb_dataset[self.pdb_lmdb_dataset.id_to_idx(pdb)]
+        resid = item['chain_resids'][chain][pos]
+        graph = extract_env_from_resid(item['atoms'].copy(), (chain, resid), self.env_radius, train_mode=True)
+        return graph, pdbc, resid    
+    
+class FoldseekContrastiveDataset(Dataset):
+    def __init__(self, msa_data, lookup_file, pdb_lmdb_dataset, num_positions=1, env_radius=10.0):
+        self.num_positions = num_positions
+        self.env_radius = env_radius
+        self.msa_data = load_dataset(msa_data, 'lmdb')
+        # self.idx_to_key = dict(zip(range(len(msa_dict)), len(msa_dict.keys())))
+        self.lookup_to_pdb, _ = self.get_lookup(lookup_file)
+        self.pdb_lmdb_dataset = load_dataset(pdb_lmdb_dataset, 'lmdb')
+        
+    def __getitem__(self, idx):
+        item = self.msa_data[idx]
+        try: 
+            (idx_anc, pos_anc), (idx_pos, pos_pos), (idx_neg, pos_neg) = self.sample(item['msa'])
+        except:
+            # print('sampling failed for', item['id'])
+            return [((None, None), None)]
+        try:
+            (g_anc, pdb_anc, r_anc), (g_pos, pdb_pos, r_pos), (g_neg, pdb_neg, r_neg) = self.process_pdb(idx_anc, pos_anc), self.process_pdb(idx_pos, pos_pos), self.process_pdb(idx_neg, pos_neg)
+        except:
+            # print('processing failed for', item['id'])
+            # print(e)
+            return [((None, None, None), None)]
+        # print('processing complete')
+        metadata = {'pdb_ids': (pdb_anc, pdb_pos, pdb_neg), 'res_ids': (r_anc, r_pos, r_neg), 'res_labels': (atom_info.aa_to_label(r_anc[0]), atom_info.aa_to_label(r_pos[0]), atom_info.aa_to_label(r_neg[0])), 'db_key': item['id']}
+        return [((g_anc, g_pos, g_neg), metadata)]
+    
+    def getNegatives(self, num_MSAs):
+        # Sample num_MSAs random indices from the dataset
+        sampled_indices = np.random.choice(len(self.msa_data), num_MSAs, replace=False)
+        
+        # Pre-allocate a list of the required size
+        negative_graphs = [None] * num_MSAs
+        
+        for i, idx in enumerate(sampled_indices):
+            item = self.msa_data[idx]
+            try:
+                idx_neg, pos_neg = self.sample_neg_from_MSA(item['msa'])
+                g_neg, _, _ = self.process_pdb(idx_neg, pos_neg)
+                negative_graphs[i] = g_neg
+            except:
+                # Handle exceptions, e.g., by leaving the value as None or setting 
+                # a default value
+                continue
+        
+        return negative_graphs
+    
+    def sample_neg_from_MSA(self, df):
+        # This function samples a single random position for the given MSA
+        row = df.sample(n=1).iloc[0]
+        idx = int(row['ttargetID'])
+        p = self.get_valid_positions(row)
+        pos_neg = np.random.choice(p['t'].values, size=1)
+        return idx, pos_neg[0]
+        
+    def __len__(self):
+        return len(self.msa_data)
+    
+    def get_lookup(self, lookup_file):
+        pdb_lookup = pd.read_csv(lookup_file, sep='\t', index_col=0, header=None)
+        pdb_lookup['name'] = pdb_lookup[1].str.replace('.cif.gz', '')
+        idx_to_pdb = dict(pdb_lookup['name'])
+        pdb_to_idx = {v:k for k,v in idx_to_pdb.items()}
+        return idx_to_pdb, pdb_to_idx
+
+    def get_valid_positions(self, row):
+        query_start = int(row['qStart'])
+        target_start = int(row['tStart'])
+        # This retrieves the CIGAR string from the row. The CIGAR string is 
+        # a compact representation of sequence alignment, where various 
+        # operations (like matches, insertions, deletions) are encoded.
+        cigar = row['alnCigar']
+        query, target = query_start, target_start
+        matches = []
+        for ct, action in re.findall('([0-9]*)([IDMP])', cigar):
+            ct = int(ct)
+
+            if action == 'D':
+                target += ct
+            elif action == 'I':
+                query += ct
+            elif action == 'M':  # use only Perfect matches
+                matches += [(query + i, target + i) for i in range(ct)]
+                query += ct
+                target += ct
+        # The matched positions are returned as a DataFrame with columns 'q' (query position)
+        return pd.DataFrame(matches, columns=['q', 't'])
+    
+    # NOTE this is probably where I need to change
+    # this function is sampling the positive pair 
+    # from two different rows in the DataFrame that have 
+    # low sequence identity, and the negative example from 
+    # the same row as the anchor.
+    
+    ### parameters:
+    # df seems to be a dataframe for all sequences in rows?
+    def sample(self, df):
+        # exp: rows with less sequence identity have a great chance of being selected
+        # pair_rows = df.sample(n=2, weights=1 - df['seqIdentity'].astype(float))
+        pair_rows = df.sample(n=2) # changed to just sample uniformly
+        row1, row2 = pair_rows.iloc[0], pair_rows.iloc[1]
+        idx1, idx2 = int(row1['ttargetID']), int(row2['ttargetID'])
+        p1, p2 = self.get_valid_positions(row1), self.get_valid_positions(row2)
+        correspondences = pd.merge(p1, p2, how='inner', on='q').to_numpy()
+        # pick a predetermined number of positions from the aligned structures
+        rand = np.random.randint(correspondences.shape[0], size=self.num_positions)
+        # The anchor and positive positions are selected randomly from the correspondences.
+        q, pos1, pos2 = correspondences[rand][0] # sample anchor and positive
+        # The negative position is randomly chosen from the valid positions of the protein 
+        # associated with the anchor 
+        pos_neg = np.random.choice(correspondences[:, 1], size=1) 
+        return (idx1, pos1), (idx2, pos2), (idx1, pos_neg)
+    
+    def process_pdb(self, idx, pos):
+        pdbc = self.lookup_to_pdb[idx]
+        pdb, chain = pdbc.split('_')
+        item = self.pdb_lmdb_dataset[self.pdb_lmdb_dataset.id_to_idx(pdb)]
+        resid = item['chain_resids'][chain][pos]
+        graph = extract_env_from_resid(item['atoms'].copy(), (chain, resid), self.env_radius, train_mode=True)
+        return graph, pdbc, resid
+ 
+
 class FeatureDataset(Dataset):
     def __init__(self, ff1, ff2, label_dict):
         with open(label_dict, 'rb') as f:
